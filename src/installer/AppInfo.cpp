@@ -22,8 +22,8 @@ static const char *KEY_APPBASE = "_app_base";
 const std::string DEFAULT_VERSION = "1.0.0";
 
 AppInfo::AppInfo(std::string appPath)
-    : m_appPath(appPath)
-    , m_loaded(false)
+    : m_appPath(appPath),
+      m_loaded(false)
 {
     m_loaded = load();
 }
@@ -38,9 +38,14 @@ bool AppInfo::isWeb() const
     return (getType() == "web");
 }
 
+bool AppInfo::isQml() const
+{
+    return (getType() == "qml");
+}
+
 bool AppInfo::isNative() const
 {
-    return (!isWeb() && !isStub());
+    return (!isWeb() && !isQml() && !isStub());
 }
 
 bool AppInfo::isStub() const
