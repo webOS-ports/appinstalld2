@@ -46,15 +46,16 @@ pkg_check_modules(PMLOG REQUIRED PmLogLib)
 include_directories(${PMLOG_INCLUDE_DIRS})
 webos_add_compiler_flags(ALL ${PMLOG_CFLAGS_OTHER})
 
-find_package(Boost REQUIRED)
+find_package(Boost REQUIRED COMPONENTS filesystem regex system)
+
 include_directories(${Boost_INCLUDE_DIRS})
 webos_add_compiler_flags(ALL ${Boost_CFLAGS_OTHER})
 add_definitions(-DBOOST_BIND_NO_PLACEHOLDERS)
 
-pkg_check_modules(PMTRACE REQUIRED PmTrace)
-include_directories(${PMTRACE_INCLUDE_DIRS})
-webos_add_compiler_flags(ALL ${PMTRACE_CFLAGS_OTHER})
-add_definitions(-DBOOST_BIND_NO_PLACEHOLDERS)
+#pkg_check_modules(PMTRACE REQUIRED PmTrace)
+#include_directories(${PMTRACE_INCLUDE_DIRS})
+#webos_add_compiler_flags(ALL ${PMTRACE_CFLAGS_OTHER})
+#add_definitions(-DBOOST_BIND_NO_PLACEHOLDERS)
 
 find_library(ICU NAMES icuuc)
 if(ICU STREQUAL "ICU-NOTFOUND")
@@ -84,7 +85,6 @@ SET (EXT_LIBS
     ${PMLOG_LDFLAGS}
     ${Boost_LIBRARIES}
     ${ICU}
-    ${PMTRACE_LDFLAGS}
 )
 
 target_link_libraries(${CMAKE_PROJECT_NAME} ${EXT_LIBS})

@@ -19,8 +19,6 @@
 
 #include <PmLogLib.h>
 
-#include "PmTrace.h"
-
 /* Logging for appInstallD main context ********
  * The parameters needed are
  * msgid - unique message id
