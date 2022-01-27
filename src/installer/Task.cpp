@@ -425,7 +425,10 @@ void Task::finish()
     if (m_finished)
         return;
 
+
     // TODO unlock app
+    //Disable lockApp for now since it's only available in SAM which we don't use yet
+    /*
 #if defined(WEBOS_TARGET_DISTRO_WEBOS_AUTO)
     size_t size = SessionList::getInstance().size();
     for (size_t i = 0; i < size; ++i) {
@@ -435,7 +438,8 @@ void Task::finish()
 #else
     ApplicationManager::getInstance().lockApp(nullptr, getPackageId(), false);
 #endif
-
+    */
+    
     signalFinished(*this);
     m_currentStep = nullptr;
     m_finished = true;

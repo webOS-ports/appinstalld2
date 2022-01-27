@@ -151,7 +151,7 @@ void AppCloseStep::addCallItems(const char *sessionId, const string& packageId, 
         callchain.add_if(itemAppInfo, true, itemAppRemovable);
 
     callchain
-        .add_if(itemAppInfo, true, itemAppLock)
+        //.add_if(itemAppInfo, true, itemAppLock)
         .add(itemRunning)
         .add_if(itemRunning, true, itemClose)
         .add(itemSvcClose);
