@@ -64,10 +64,10 @@ namespace CallChainEventHandler
     }
 
     AppClose::AppClose(const char *serviceName, const char *sessionId, std::string id)
-        : LSCallItem(serviceName, "luna://com.webos.applicationManager/closeByAppId", "", sessionId)
+        : LSCallItem(serviceName, "luna://org.webosports.webappmanager/killApp", "", sessionId)
     {
         pbnjson::JValue payload = pbnjson::Object();
-        payload.put("id", id);
+        payload.put("appId", id);
         setPayload(JUtil::toSimpleString(payload).c_str());
     }
 
@@ -86,7 +86,10 @@ namespace CallChainEventHandler
         : LSCallItem(serviceName, "luna://com.webos.applicationManager/getAppInfo", "", sessionId)
     {
         pbnjson::JValue payload = pbnjson::Object();
+        /*legacy webOS and Open webOS luna-sysmgr expect appId instead of id which is expected by SAM in webOS OSE
         payload.put("id", id);
+        */
+        payload.put("appId", id);
         setPayload(JUtil::toSimpleString(payload).c_str());
     }
 

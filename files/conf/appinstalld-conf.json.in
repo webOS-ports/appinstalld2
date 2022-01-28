@@ -21,10 +21,6 @@
         },
         {
            "status": "ServiceInstallComplete",
-           "action": "InstallSmackNeeded"
-        },
-        {
-           "status": "InstallSmackComplete",
            "action": "InstallComplete"
         }
     ],
@@ -42,10 +38,6 @@
         },
         {
            "status": "RemoveJailComplete",
-           "action": "RemoveSmackNeeded"
-        },
-        {
-           "status": "RemoveSmackComplete",
            "action": "ServiceUninstallNeeded"
         },
         {
