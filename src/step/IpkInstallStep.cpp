@@ -57,6 +57,11 @@ bool IpkInstallStep::proceed(Task *task)
     std::string ipkFile= param["ipkurl"].asString();
     bool allowDowngrade = param["allowDowngrade"].asBool();
 
+    if( 0 == ipkFile.find("file://") ) {
+        // uri pointing to local file => transform to file path
+        ipkFile.replace(0,7,"");
+    }
+
     AppInstallerUtility::Result result =
             m_installerUtility.install(std::move(ipkFile), 0, verify, allowDowngrade, task->isAllowReInstall(), task->getInstallBasePath(),
                 std::bind(&IpkInstallStep::cbInstallIpkProgress, this, _1),
