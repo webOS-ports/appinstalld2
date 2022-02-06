@@ -23,6 +23,7 @@
 #include "base/JUtil.h"
 #include "base/Utils.h"
 #include "base/Logging.h"
+#include "util/Logger.h"
 #include "installer/AppInstallerErrors.h"
 #include "installer/Task.h"
 #include "settings/Settings.h"
@@ -182,6 +183,13 @@ void AppInstaller::onFinishTask(const Task &task)
             });
         }
     }
+
+    std::string errorText;
+    LSCaller caller = LSUtils::acquireCaller("com.webos.appInstallService");
+    if (!caller.Call("luna://com.palm.applicationManager/rescan", "{}", nullptr, this, nullptr, errorText)) {
+        Logger::error("AppInstaller", __FUNCTION__, "rescan error: " + errorText);
+    }
+    
     //resumeAllTask(Task::SYSTEM); //TODO : need to check
 }
 
