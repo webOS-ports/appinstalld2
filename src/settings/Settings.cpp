@@ -1,4 +1,4 @@
-// Copyright (c) 2013-2019 LG Electronics, Inc.
+// Copyright (c) 2013-2020 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@
 #include "base/Utils.h"
 #include "base/Logging.h"
 #include "base/JUtil.h"
+#include "settings/Smack.h"
 
 Settings::Settings()
     : m_installerDataPath(WEBOS_INSTALL_WEBOS_LOCALSTATEDIR "/data/com.webos.appInstallService"),
@@ -43,12 +44,14 @@ Settings::Settings()
       m_roleTemplatePathNDK(WEBOS_INSTALL_DATADIR "/rolegen/templates/NDK"),
       m_roleTemplatePathWebApp(WEBOS_INSTALL_DATADIR "/rolegen/templates/WebApp.json"),
       m_roleTemplatePathJSService(WEBOS_INSTALL_DATADIR "/rolegen/templates/JSService.json"),
+      m_roleTemplatePathNativeApp(WEBOS_INSTALL_DATADIR "/rolegen/templates/NativeApp.json"),
       m_roleTemplatePathNativeService(WEBOS_INSTALL_DATADIR "/rolegen/templates/NativeService.json"),
       m_confPath(WEBOS_INSTALL_WEBOS_SYSCONFDIR "/appinstalld-conf.json"),
       m_schemaPath(WEBOS_INSTALL_WEBOS_SYSCONFDIR "/schemas/appinstalld/"),
       m_devModePath("/var/luna/preferences/devmode_enabled"),
       m_isDevMode(false),
       m_isJailMode(false),
+      m_isSmackMode(false),
       m_localePath("/var/luna/preferences/localeInfo"),
       m_signageContentsPath("/mnt/lg/appstore/scap/contents/"),
       m_supportUI(true),
@@ -61,6 +64,9 @@ Settings::Settings()
 
     if (0 == access(m_jailerPath.c_str(), F_OK))
         m_isJailMode = true;
+
+    if (0 == access(SMACK_RULES_GEN_EXEC, F_OK))
+        m_isSmackMode = true;
 
     if (!parseOpkgConfigure())
         LOG_WARNING(MSGID_SETTINGS_PARSE_FAIL, 0, "opkg conf parse fail");
@@ -284,6 +290,11 @@ const std::string& Settings::getRoleTemplatePathJSService() const
     return m_roleTemplatePathJSService;
 }
 
+const std::string& Settings::getRoleTemplatePathNativeApp() const
+{
+    return m_roleTemplatePathNativeApp;
+}
+
 const std::string& Settings::getRoleTemplatePathNativeService() const
 {
     return m_roleTemplatePathNativeService;
@@ -307,6 +318,11 @@ bool Settings::isDevMode()
 bool Settings::isJailMode()
 {
     return m_isJailMode;
+}
+
+bool Settings::isSmackMode()
+{
+    return m_isSmackMode;
 }
 
 const std::string& Settings::getLocalePath() const

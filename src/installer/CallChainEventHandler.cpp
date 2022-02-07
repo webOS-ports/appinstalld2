@@ -1,4 +1,4 @@
-// Copyright (c) 2013-2018 LG Electronics, Inc.
+// Copyright (c) 2013-2020 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -32,8 +32,8 @@ namespace CallChainEventHandler
 {
     const int SETTINGSERVICE_GET_VALUE_NUM = 3;
 
-    AppRunning::AppRunning(const char *serviceName, std::string id)
-        : LSCallItem(serviceName, "luna://com.webos.applicationManager/running", "{}"),
+    AppRunning::AppRunning(const char *serviceName, const char *sessionId, std::string id)
+        : LSCallItem(serviceName, "luna://com.webos.applicationManager/running", "{}", sessionId),
           m_id(id)
     {
     }
@@ -63,11 +63,11 @@ namespace CallChainEventHandler
         return false;
     }
 
-    AppClose::AppClose(const char *serviceName, std::string id)
-        : LSCallItem(serviceName, "luna://com.webos.applicationManager/closeByAppId", "")
+    AppClose::AppClose(const char *serviceName, const char *sessionId, std::string id)
+        : LSCallItem(serviceName, "luna://org.webosports.webappmanager/killApp", "", sessionId)
     {
         pbnjson::JValue payload = pbnjson::Object();
-        payload.put("id", id);
+        payload.put("appId", id);
         setPayload(JUtil::toSimpleString(payload).c_str());
     }
 
@@ -82,11 +82,14 @@ namespace CallChainEventHandler
         return true;
     }
 
-    AppInfo::AppInfo(const char *serviceName, std::string id)
-        : LSCallItem(serviceName, "luna://com.webos.applicationManager/getAppInfo", "")
+    AppInfo::AppInfo(const char *serviceName, const char* sessionId, std::string id)
+        : LSCallItem(serviceName, "luna://com.webos.applicationManager/getAppInfo", "", sessionId)
     {
         pbnjson::JValue payload = pbnjson::Object();
+        /*legacy webOS and Open webOS luna-sysmgr expect appId instead of id which is expected by SAM in webOS OSE
         payload.put("id", id);
+        */
+        payload.put("appId", id);
         setPayload(JUtil::toSimpleString(payload).c_str());
     }
 
@@ -120,8 +123,8 @@ namespace CallChainEventHandler
         return true;
     }
 
-    AppLock::AppLock(const char *serviceName, std::string id)
-        : LSCallItem(serviceName, "luna://com.webos.applicationManager/lockApp", "")
+    AppLock::AppLock(const char *serviceName, const char *sessionId, std::string id)
+        : LSCallItem(serviceName, "luna://com.webos.applicationManager/lockApp", "", sessionId)
     {
         pbnjson::JValue payload = pbnjson::Object();
         payload.put("id", id);
@@ -144,9 +147,10 @@ namespace CallChainEventHandler
         return true;
     }
 
-    SvcClose::SvcClose()
+    SvcClose::SvcClose(const char *sessionId)
         : m_numResponse(0),
-          m_numServices(0)
+          m_numServices(0),
+          m_sessionId(sessionId)
     {
     }
 
@@ -186,14 +190,14 @@ namespace CallChainEventHandler
                 std::string errorText;
                 std::string uri = "luna://" + serviceInfo.getId() + "/quit";
                 LSCaller caller = LSUtils::acquireCaller("com.webos.appInstallService");
-                LOG_DEBUG("[NODEJS_SVC_CLOSE] uri : %s", uri.c_str());
-                if (!caller.CallOneReply(uri.c_str(), "{}", cbQuit, this, NULL, errorText)) {
+                LOG_DEBUG("[NODEJS_SVC_CLOSE] uri : %s, session : %s", uri.c_str(), m_sessionId ? m_sessionId : "(nullptr)");
+                if (!caller.CallOneReply(uri.c_str(), "{}", m_sessionId, cbQuit, this, NULL, errorText)) {
                     Utils::async([=] { onFinished(false, errorText); });
                     break;
                 }
             } else {
                 std::string serviceExec = serviceInfo.getExec(true);
-                std::string closeCmd = std::string("killall ") + serviceExec;
+                std::string closeCmd = "pkill -f " + serviceExec;
                 LOG_DEBUG("[NATIVE_SVC_CLOSE] closeCmd : %s", closeCmd.c_str());
                 ::system(closeCmd.c_str());
 
@@ -237,8 +241,8 @@ namespace CallChainEventHandler
         return true;
     }
 
-    RemoveDb::RemoveDb(const char* serviceName, pbnjson::JValue owners)
-        : LSCallItem(serviceName, "luna://com.webos.service.db/removeAppData", "")
+    RemoveDb::RemoveDb(const char* serviceName, const char* sessionId, pbnjson::JValue owners)
+        : LSCallItem(serviceName, "luna://com.webos.service.db/removeAppData", "", sessionId)
     {
         pbnjson::JValue json = pbnjson::Object();
         json.put("owners", owners);

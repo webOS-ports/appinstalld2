@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2018 LG Electronics, Inc.
+// Copyright (c) 2020 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,25 +14,15 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-#include "RemoveStartStep.h"
-#include "installer/Task.h"
+#ifndef SETTINGS_SMACK_H
+#define SETTINGS_SMACK_H
 
-RemoveStartStep::RemoveStartStep()
-{
-}
+#define CHSMACK_EXEC            "chsmack"
+#define SMACKCTL_EXEC           "smackctl"
+#define SMACK_RULES_GEN_EXEC    "/usr/share/smack/smack_rules_gen"
+#define SMACK_RULES_DIR         "/etc/smack/accesses.d/"
+#define SMACK_EXEC_PREFFIX      "webOS::App::"
+#define SMACK_SERVICE_PREFFIX   "webOS::Service::"
+#define SMACK_RULES_OVERLAY     "/var/smack/accesses.d/"
 
-RemoveStartStep::~RemoveStartStep()
-{
-    LOG_DEBUG("RemoveStartStep::~RemoveNeededStep called\n");
-}
-
-bool RemoveStartStep::proceed(Task *task)
-{
-    LOG_DEBUG("RemoveStartStep::proceed() called\n");
-
-    m_parentTask = task;
-
-    m_parentTask->setStep(RemoveStarted);
-    Utils::async([=] { m_parentTask->proceed(); });
-    return true;
-}
+#endif

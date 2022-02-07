@@ -16,6 +16,7 @@
 
 #include "IpkInstallStep.h"
 #include <functional>
+#include "installer/Task.h"
 
 using namespace std::placeholders;
 
@@ -55,6 +56,11 @@ bool IpkInstallStep::proceed(Task *task)
     bool verify = param["verify"].asBool();
     std::string ipkFile= param["ipkurl"].asString();
     bool allowDowngrade = param["allowDowngrade"].asBool();
+    
+    if( 0 == ipkFile.find("file://") ) {
+        // uri pointing to local file => transform to file path
+        ipkFile.replace(0,7,"");
+    }
 
     AppInstallerUtility::Result result =
             m_installerUtility.install(ipkFile, 0, verify, allowDowngrade, task->isAllowReInstall(), task->getInstallBasePath(),

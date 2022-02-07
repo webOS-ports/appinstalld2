@@ -1,4 +1,4 @@
-// Copyright (c) 2013-2019 LG Electronics, Inc.
+// Copyright (c) 2013-2020 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -142,11 +142,13 @@ public:
     const std::string& getRoleTemplatePathNDK() const;
     const std::string& getRoleTemplatePathWebApp() const;
     const std::string& getRoleTemplatePathJSService() const;
+    const std::string& getRoleTemplatePathNativeApp() const;
     const std::string& getRoleTemplatePathNativeService() const;
     const std::string& getConfPath() const;
     const std::string& getSchemaPath() const;
     bool isDevMode();
     bool isJailMode();
+    bool isSmackMode();
     const std::string& getLocalePath() const;
 
 protected:
@@ -175,6 +177,7 @@ private:
     std::string m_roleTemplatePathNDK;      //default : @WEBOS_INSTALL_DATADIR@/rolegen/templates/NDK
     std::string m_roleTemplatePathWebApp;   //default : @WEBOS_INSTALL_DATADIR@/rolegen/templates/WebApp.json
     std::string m_roleTemplatePathJSService;   //default : @WEBOS_INSTALL_DATADIR@/rolegen/templates/JSService.json
+    std::string m_roleTemplatePathNativeApp;   //default : @WEBOS_INSTALL_DATADIR@/rolegen/templates/NativeApp.json
     std::string m_roleTemplatePathNativeService;   //default : @WEBOS_INSTALL_DATADIR@/rolegen/templates/NativeService.json
     std::string m_confPath;                 //default : @WEBOS_INSTALL_WEBOS_SYSCONFDIR@/appinstalld-conf.json
     std::string m_schemaPath;               //default : @WEBOS_INSTALL_WEBOS_SYSCONFDIR@/schemas/appinstalld/
@@ -182,6 +185,7 @@ private:
     std::string m_devModePath;              // default : /var/luna/preferences/devmode_enabled
     bool m_isDevMode;                       // default : false
     bool m_isJailMode;                      // default : false
+    bool m_isSmackMode;                     // default : false
     std::string m_localePath;               // default : /var/luna/preferences/localeInfo
 
     // Signage media file path which need to link app path
@@ -195,7 +199,6 @@ private:
     std::string m_opkgInfoPath;             //default : /apps/var/lib/opkg/info
     std::string m_opkgStatusFilePath;       //default : /apps/var/lib/opkg/status
     std::string m_opkgLockFilePath;         //default : /apps/var/lock/opkg
-
 };
 
 #endif // Settings

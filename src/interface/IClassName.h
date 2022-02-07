@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2018 LG Electronics, Inc.
+// Copyright (c) 2020 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,25 +14,31 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-#include "RemoveStartStep.h"
-#include "installer/Task.h"
+#ifndef INTERFACE_ICLASSNAME_H_
+#define INTERFACE_ICLASSNAME_H_
 
-RemoveStartStep::RemoveStartStep()
-{
-}
+#include <iostream>
 
-RemoveStartStep::~RemoveStartStep()
-{
-    LOG_DEBUG("RemoveStartStep::~RemoveNeededStep called\n");
-}
+using namespace std;
 
-bool RemoveStartStep::proceed(Task *task)
-{
-    LOG_DEBUG("RemoveStartStep::proceed() called\n");
+class IClassName {
+public:
+    IClassName() : m_name("Unknown") {};
+    virtual ~IClassName() {};
 
-    m_parentTask = task;
+    string& getClassName()
+    {
+        return m_name;
+    }
 
-    m_parentTask->setStep(RemoveStarted);
-    Utils::async([=] { m_parentTask->proceed(); });
-    return true;
-}
+    void setClassName(string name)
+    {
+        m_name = name;
+    }
+
+private:
+    string m_name;
+
+};
+
+#endif /* INTERFACE_ICLASSNAME_H_ */

@@ -1,4 +1,4 @@
-// Copyright (c) 2013-2018 LG Electronics, Inc.
+// Copyright (c) 2013-2020 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -83,7 +83,7 @@ bool ServiceInstallerUtility::install(std::string appId,
         packageInfo.getServices(serviceLists);
 
     // generate Manifest file
-    if (!generateManifestFile(pathInfo, installBasePath, packageInfo, appInfo)) {
+    if (!ServiceInstallerUtility::generateManifestFile(pathInfo, installBasePath, packageInfo, appInfo)) {
         Utils::async([=] {onComplete(false, "Failed to generate Manifest file");});
         return false;
     }
@@ -132,7 +132,7 @@ bool ServiceInstallerUtility::install(std::string appId,
 
     // tell the hub there's a new service in town
     CallChain& callchain = CallChain::acquire(std::bind(&ServiceInstallerUtility::onUpdateManifest,
-                                                        this, _1, _2, onComplete));
+                                                        _1, _2, onComplete));
 
     if (isUpdate) {
         auto removeItemAppInfo =
@@ -193,7 +193,7 @@ bool ServiceInstallerUtility::remove(std::string appId,
                                      std::function<void(bool, std::string)> onComplete)
 {
     CallChain& callchain = CallChain::acquire(std::bind(&ServiceInstallerUtility::onRemoveManifest,
-                                                        this, _1, _2, appId, pathInfos, onComplete));
+                                                        _1, _2, appId, pathInfos, onComplete));
 
     for (auto pathInfo : pathInfos) {
         auto itemAppInfo =
@@ -320,9 +320,9 @@ bool ServiceInstallerUtility::generateRoleFileForNativeApp(const std::string& pa
                                                            const std::string& exec)
 {
     return generateUnifiedAppRoleFile(path,
-                                      Settings::instance().getRoleTemplatePathNativeService(),
+                                      Settings::instance().getRoleTemplatePathNativeApp(),
                                       Settings::instance().getLunaUnifiedAppJsonFileName(appId),
-                                      appId,
+                                      appId+"*",
                                       exec);
 }
 
@@ -414,7 +414,7 @@ bool ServiceInstallerUtility::generatePermissionFileForNativeApp(const std::stri
                                              Settings::instance().getLunaUnifiedAppJsonFileName(appInfo.getId()),
                                              appInfo,
                                              appInfo.getId(),
-                                             "",
+                                             "*",
                                              requiredServices);
 }
 
@@ -478,11 +478,8 @@ bool ServiceInstallerUtility::generateServiceFile(std::string path,
     std::string exec;
     if (servicesInfo.getType() == "native") {
         if (Settings::instance().isJailMode()) {
-            exec = Settings::instance().getJailerPath();
-            exec += " -t " + servicesInfo.getJailerType();
-            exec += " -i " + appInfo.getId();
-            exec += " -p " + servicesInfo.getPath(false); //relative path
-            exec += " " + servicesInfo.getExec(true); //full path by adding relative path
+            // TODO As we support linux user, We need to discuss whether to continue using jailer.
+            exec = servicesInfo.getExec(true);
         } else {
             exec = servicesInfo.getExec(true);
         }

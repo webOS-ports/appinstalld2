@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2018 LG Electronics, Inc.
+// Copyright (c) 2020 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,25 +14,18 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-#include "RemoveStartStep.h"
-#include "installer/Task.h"
+#ifndef INSTALL_SMACK_STEP_H
+#define INSTALL_SMACK_STEP_H
 
-RemoveStartStep::RemoveStartStep()
-{
-}
+#include "Step.h"
 
-RemoveStartStep::~RemoveStartStep()
-{
-    LOG_DEBUG("RemoveStartStep::~RemoveNeededStep called\n");
-}
+class Task;
+class InstallSmackStep : public Step {
+public:
+    InstallSmackStep();
+    virtual ~InstallSmackStep();
 
-bool RemoveStartStep::proceed(Task *task)
-{
-    LOG_DEBUG("RemoveStartStep::proceed() called\n");
+    virtual bool proceed(Task * task);
+};
 
-    m_parentTask = task;
-
-    m_parentTask->setStep(RemoveStarted);
-    Utils::async([=] { m_parentTask->proceed(); });
-    return true;
-}
+#endif

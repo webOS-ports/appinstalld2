@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2018 LG Electronics, Inc.
+// Copyright (c) 2020 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,25 +14,23 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-#include "RemoveStartStep.h"
-#include "installer/Task.h"
+#ifndef BASE_SESSIONLIST_H_
+#define BASE_SESSIONLIST_H_
 
-RemoveStartStep::RemoveStartStep()
-{
-}
+#include <vector>
 
-RemoveStartStep::~RemoveStartStep()
-{
-    LOG_DEBUG("RemoveStartStep::~RemoveNeededStep called\n");
-}
+#include "interface/ISingleton.h"
 
-bool RemoveStartStep::proceed(Task *task)
-{
-    LOG_DEBUG("RemoveStartStep::proceed() called\n");
+using namespace std;
 
-    m_parentTask = task;
+class SessionList : public ISingleton<SessionList>,
+                    public vector<string> {
+friend class ISingleton<SessionList>;
+public:
+    virtual ~SessionList() {}
 
-    m_parentTask->setStep(RemoveStarted);
-    Utils::async([=] { m_parentTask->proceed(); });
-    return true;
-}
+private:
+    SessionList() {}
+};
+
+#endif /* BASE_SESSIONLIST_H_ */

@@ -1,4 +1,4 @@
-// Copyright (c) 2013-2018 LG Electronics, Inc.
+// Copyright (c) 2013-2020 LG Electronics, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,23 +14,29 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+#include "Task.h"
+
 #include <cinttypes>
 
 #include "base/Creator.h"
 #include "base/Factory.h"
 #include "base/Logging.h"
+#include "base/SessionList.h"
 #include "base/Utils.h"
+#include "client/ApplicationManager.h"
+#include "settings/Settings.h"
 #include "step/AppCloseStep.h"
 #include "step/DataRemoveStep.h"
 #include "step/GetIpkInfoStep.h"
 #include "step/IpkInstallStep.h"
 #include "step/IpkParseStep.h"
 #include "step/IpkRemoveStep.h"
+#include "step/InstallSmackStep.h"
 #include "step/RemoveJailStep.h"
+#include "step/RemoveSmackStep.h"
 #include "step/RemoveStartStep.h"
 #include "step/ServiceInstallStep.h"
 #include "step/ServiceUninstallStep.h"
-#include "Task.h"
 
 typedef Factory<Step> StepFactory;
 
@@ -67,12 +73,14 @@ bool Task::initialize(pbnjson::JValue param)
     StepFactory::instance().registerObject("GetIpkInfoNeeded", CreatorUsingNew<GetIpkInfoStep>());
     StepFactory::instance().registerObject("AppCloseNeeded", CreatorUsingNew<AppCloseStep>());
     StepFactory::instance().registerObject("IpkInstallNeeded", CreatorUsingNew<IpkInstallStep>());
+    StepFactory::instance().registerObject("InstallSmackNeeded", CreatorUsingNew<InstallSmackStep>());
     StepFactory::instance().registerObject("ServiceInstallNeeded", CreatorUsingNew<ServiceInstallStep>());
     StepFactory::instance().registerObject("RemoveNeeded", CreatorUsingNew<RemoveStartStep>());
     StepFactory::instance().registerObject("RemoveJailNeeded", CreatorUsingNew<RemoveJailStep>());
     StepFactory::instance().registerObject("ServiceUninstallNeeded", CreatorUsingNew<ServiceUninstallStep>());
     StepFactory::instance().registerObject("IpkRemoveNeeded", CreatorUsingNew<IpkRemoveStep>());
     StepFactory::instance().registerObject("DataRemoveNeeded", CreatorUsingNew<DataRemoveStep>());
+    StepFactory::instance().registerObject("RemoveSmackNeeded", CreatorUsingNew<RemoveSmackStep>());
 
     return true;
 }
@@ -317,6 +325,14 @@ pbnjson::JValue Task::toJValue() const
             details.put("state", "app closing");
             break;
 
+        case InstallSmackNeeded:
+        case InstallSmackRequested:
+            details.put("state", "installing SMACK rule");
+            break;
+        case InstallSmackComplete:
+            details.put("state", "installing SMACK rule done");
+            break;
+
         case InstallComplete:
             details.put("state", "installed");
             details.put("progress", 100);
@@ -346,6 +362,14 @@ pbnjson::JValue Task::toJValue() const
         case RemoveComplete:
             details.put("state", "removed");
             details.put("progress", 100);
+            break;
+
+        case RemoveSmackNeeded:
+        case RemoveSmackRequested:
+            details.put("state", "removing SMACK rules");
+            break;
+        case RemoveSmackComplete:
+            details.put("state", "removing SMACK rules done");
             break;
 
         case ErrorRemove:
@@ -401,6 +425,21 @@ void Task::finish()
     if (m_finished)
         return;
 
+
+    // TODO unlock app
+    //Disable lockApp for now since it's only available in SAM which we don't use yet
+    /*
+#if defined(WEBOS_TARGET_DISTRO_WEBOS_AUTO)
+    size_t size = SessionList::getInstance().size();
+    for (size_t i = 0; i < size; ++i) {
+        const std::string& sessionId = SessionList::getInstance().at(i);
+        ApplicationManager::getInstance().lockApp(sessionId.c_str(), getPackageId(), false);
+    }
+#else
+    ApplicationManager::getInstance().lockApp(nullptr, getPackageId(), false);
+#endif
+    */
+    
     signalFinished(*this);
     m_currentStep = nullptr;
     m_finished = true;
