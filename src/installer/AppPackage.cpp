@@ -152,6 +152,7 @@ bool AppPackage::extractOneItem()
     argv[index++] = (gchar *) "tar";
     argv[index++] = (gchar *) "xzf";
     argv[index++] = (gchar *) targetFile.c_str();
+    argv[index++] = (gchar *) "--no-same-owner";
     argv[index] = NULL;
 
     result = g_spawn_async(m_targetPath.c_str(),
