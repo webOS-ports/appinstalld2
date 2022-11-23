@@ -101,7 +101,8 @@ bool AppCloseStep::checkPriviligedApp()
     {
         if (boost::starts_with(packageId, std::string("com.palm.")) ||
             boost::starts_with(packageId, std::string("com.webos.")) ||
-            boost::starts_with(packageId, std::string("com.lge.")))
+            boost::starts_with(packageId, std::string("com.lge.")) ||
+            boost::starts_with(packageId, std::string("org.webosports.")))
         {
             return false;
         }
