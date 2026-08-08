@@ -1,12 +1,9 @@
 {
     "com.webos.appInstallService": [
-        "applicationinstall.interface",
         "application.launcher",
         "appmanager.management",
-        "session.management",
         "application.operation",
         "database.operation",
-        "diagnostics.telemetry",
         "servicebus.configuration",
         "servicebus.management"
     ]
