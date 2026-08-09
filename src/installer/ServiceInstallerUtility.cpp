@@ -16,7 +16,11 @@
 
 #include <boost/algorithm/string/predicate.hpp>
 #include <iostream>
+#include <unistd.h>
 
+#include <glib.h>
+
+#include "webospaths.h"
 #include "AppInfo.h"
 #include "base/CallChain.h"
 #include "base/JUtil.h"
@@ -31,6 +35,56 @@
 #include "Manifest.h"
 
 using namespace std::placeholders;
+
+//! Path of the helper that derives "requiredPermissions" for legacy apps.
+static const char * const kRequiredPermissionsHelper =
+    WEBOS_INSTALL_BINDIR "/luneos-app-permissions";
+
+/**
+ * Legacy ipks predate "requiredPermissions" in appinfo.json, so the permission
+ * file generated below would grant them nothing and every luna:// call they
+ * make would be denied. Give the helper a chance to work out which access
+ * control groups the application actually uses and write them into its
+ * appinfo.json, before we read it.
+ *
+ * This is best effort: whatever happens, the installation carries on.
+ */
+static void fillMissingRequiredPermissions(const std::string &applicationPath)
+{
+    if (0 != access(kRequiredPermissionsHelper, X_OK)) {
+        LOG_DEBUG("[ServiceInstallerUtility] %s is not installed, skipping",
+                  kRequiredPermissionsHelper);
+        return;
+    }
+
+    gchar *argv[] = {
+        const_cast<gchar *>(kRequiredPermissionsHelper),
+        const_cast<gchar *>(applicationPath.c_str()),
+        nullptr
+    };
+
+    gint exitStatus = 0;
+    GError *error = nullptr;
+
+    if (!g_spawn_sync(nullptr, argv, nullptr,
+                      (GSpawnFlags)(G_SPAWN_STDOUT_TO_DEV_NULL |
+                                    G_SPAWN_STDERR_TO_DEV_NULL),
+                      nullptr, nullptr, nullptr, nullptr,
+                      &exitStatus, &error)) {
+        LOG_WARNING(MSGID_REQUIRED_PERMISSIONS_FAIL, 1,
+                    PMLOGKS("APP_PATH", applicationPath.c_str()),
+                    "Failed to run %s: %s", kRequiredPermissionsHelper,
+                    error ? error->message : "unknown error");
+        g_clear_error(&error);
+        return;
+    }
+
+    if (exitStatus != 0) {
+        LOG_WARNING(MSGID_REQUIRED_PERMISSIONS_FAIL, 1,
+                    PMLOGKS("APP_PATH", applicationPath.c_str()),
+                    "%s exited with %d", kRequiredPermissionsHelper, exitStatus);
+    }
+}
 
 static void roleGenerate(std::string templatePath,
                          std::string destinationPath,
@@ -74,6 +128,7 @@ bool ServiceInstallerUtility::install(std::string appId,
     std::string applicationPath = installBasePath + Settings::instance().getApplicationInstallPath() + "/" + appId;
     std::string packagePath = installBasePath + Settings::instance().getPackageinstallPath() + "/" + appId;
     LOG_DEBUG("[ServiceInstallerUtility::install]  packagePath : %s", packagePath.c_str());
+    fillMissingRequiredPermissions(applicationPath);
     AppInfo appInfo(std::move(applicationPath));
     if (!appInfo.isLoaded()) {
         Utils::async([onComplete = std::move(onComplete)]() {onComplete(false, "Cannot find appinfo.json");});
