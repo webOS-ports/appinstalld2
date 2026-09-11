@@ -24,6 +24,13 @@
 
 using namespace std::placeholders;
 
+// applicationManager can be down, restarting, or simply slow; without a
+// bound on the getAppInfo round-trip a remove request - and its client -
+// would otherwise hang forever (confirmed on-device: appinstalld itself
+// stayed healthy, but every /remove call wedged when applicationManager
+// was not running).
+static const int APPINFO_CALL_TIMEOUT_MS = 10000;
+
 AppInstallService::AppInstallService()
     : ServiceBase(get_service_name())
 {
@@ -259,17 +266,24 @@ bool AppInstallService::cb_remove(LSMessage &message)
 
     LSMessageRef(&message);
 
+    LSMessageToken token = 0;
     if (!LSCallOneReply(Handle::get(),
                         "luna://com.webos.applicationManager/getAppInfo",
                         payload.c_str(),
                         cb_appinfoCallback,
                         &message,
-                        NULL,
+                        &token,
                         &lserror))
     {
         LSErrorPrint(&lserror, stderr);
         LSMessageUnref(&message);
         return LSUtils::replyError(&request, APP_REMOVE_ERR_GENERAL, "Failed to query application info");
+    }
+
+    // applicationManager may be down or wedged (e.g. mid-restart); without a
+    // timeout this call - and the pending client reply - would hang forever
+    if (!LSCallSetTimeout(Handle::get(), token, APPINFO_CALL_TIMEOUT_MS, &lserror)) {
+        LSErrorPrint(&lserror, stderr);
     }
 
     return true;
@@ -517,17 +531,22 @@ bool AppInstallService::cb_dev_remove(LSMessage &message)
 
     LSMessageRef(&message);
 
+    LSMessageToken token = 0;
     if (!LSCallOneReply(Handle::get(),
                         "luna://com.webos.applicationManager/getAppInfo",
                         payload.c_str(),
                         cb_dev_appinfoCallback,
                         &message,
-                        NULL,
+                        &token,
                         &lserror))
     {
         LSErrorPrint(&lserror, stderr);
         LSMessageUnref(&message);
         return LSUtils::replyError(&request, APP_REMOVE_ERR_GENERAL, "Failed to query application info");
+    }
+
+    if (!LSCallSetTimeout(Handle::get(), token, APPINFO_CALL_TIMEOUT_MS, &lserror)) {
+        LSErrorPrint(&lserror, stderr);
     }
 
     return true;

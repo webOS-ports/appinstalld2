@@ -26,7 +26,9 @@ while getopts "n:c:i:" opt; do
 done
 
 SRV=com.webos.appInstallService
-LUNA="luna-send"
+# -w bounds how long any single call may block: a hung service (or a
+# downstream service it depends on) must not be able to wedge the harness
+LUNA="luna-send -w 15000"
 WORK=$(mktemp -d /tmp/appinstalld-stress.XXXXXX)
 FAILURES=0
 TESTED=0
