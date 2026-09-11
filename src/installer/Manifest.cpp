@@ -38,7 +38,8 @@ bool Manifest::load(const std::string& path)
                           "roleFilesPrv",
                           "serviceFiles",
                           "clientPermissionFiles",
-                          "apiPermissionFiles"};
+                          "apiPermissionFiles",
+                          "groupsFiles"};
 
     for (const char *key : keys) {
         if (m_info.hasKey(key)) {
