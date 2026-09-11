@@ -147,21 +147,37 @@ namespace CallChainEventHandler
     SvcClose::SvcClose(const char *sessionId)
         : m_numResponse(0),
           m_numServices(0),
-          m_sessionId(sessionId)
+          m_signaled(false),
+          m_hasSessionId(sessionId != nullptr),
+          m_sessionId(sessionId != nullptr ? sessionId : "")
     {
+    }
+
+    void SvcClose::signalFinished(bool result, std::string errorText)
+    {
+        // several /quit replies may race to complete this item;
+        // the chain must only ever be finished once
+        if (m_signaled)
+            return;
+        m_signaled = true;
+
+        auto self = std::static_pointer_cast<SvcClose>(shared_from_this());
+        Utils::async([self, result, errorText = std::move(errorText)] {
+            self->onFinished(result, errorText);
+        });
     }
 
     bool SvcClose::Call()
     {
         pbnjson::JValue chainData = getChainData();
         if (chainData.isNull()) {
-            Utils::async([=] { onFinished(true, ""); });
+            signalFinished(true, "");
             return true;
         }
 
         pbnjson::JValue appInfo = chainData["appInfo"];
         if (appInfo.isNull()) {
-            Utils::async([=] { onFinished(true, ""); });
+            signalFinished(true, "");
             return true;
         }
 
@@ -187,25 +203,49 @@ namespace CallChainEventHandler
                 std::string errorText;
                 std::string uri = "luna://" + serviceInfo.getId() + "/quit";
                 LSCaller caller = LSUtils::acquireCaller("com.webos.appInstallService");
-                LOG_DEBUG("[NODEJS_SVC_CLOSE] uri : %s, session : %s", uri.c_str(), m_sessionId ? m_sessionId : "(nullptr)");
-                if (!caller.CallOneReply(uri.c_str(), "{}", m_sessionId, cbQuit, this, NULL, errorText)) {
-                    Utils::async([=] { onFinished(false, std::move(errorText)); });
+                LOG_DEBUG("[NODEJS_SVC_CLOSE] uri : %s, session : %s", uri.c_str(), m_hasSessionId ? m_sessionId.c_str() : "(nullptr)");
+                // each in-flight callback keeps this item alive until it runs
+                auto *holder = new std::shared_ptr<SvcClose>(
+                    std::static_pointer_cast<SvcClose>(shared_from_this()));
+                if (!caller.CallOneReply(uri.c_str(), "{}",
+                                         m_hasSessionId ? m_sessionId.c_str() : nullptr,
+                                         cbQuit, holder, NULL, errorText)) {
+                    delete holder;
+                    signalFinished(false, std::move(errorText));
                     break;
                 }
             } else {
+                // serviceExec comes from the package's own services.json:
+                // never pass it through a shell
                 std::string serviceExec = serviceInfo.getExec(true);
-                std::string closeCmd = "pkill -f " + serviceExec;
-                LOG_DEBUG("[NATIVE_SVC_CLOSE] closeCmd : %s", closeCmd.c_str());
-                ::system(closeCmd.c_str());
+                LOG_DEBUG("[NATIVE_SVC_CLOSE] pkill -f %s", serviceExec.c_str());
+
+                gchar *argv[] = {
+                    const_cast<gchar *>("pkill"),
+                    const_cast<gchar *>("-f"),
+                    const_cast<gchar *>(serviceExec.c_str()),
+                    nullptr
+                };
+                GError *spawnError = nullptr;
+                if (!g_spawn_sync(nullptr, argv, nullptr,
+                                  (GSpawnFlags)(G_SPAWN_SEARCH_PATH |
+                                                G_SPAWN_STDOUT_TO_DEV_NULL |
+                                                G_SPAWN_STDERR_TO_DEV_NULL),
+                                  nullptr, nullptr, nullptr, nullptr,
+                                  nullptr, &spawnError)) {
+                    LOG_WARNING(MSGID_APP_INSTALL_ERR, 1,
+                                PMLOGKS(LOGKEY_ERRTEXT,
+                                        spawnError ? spawnError->message : "unknown"),
+                                "Failed to close native service");
+                    g_clear_error(&spawnError);
+                }
 
                 ++m_numResponse;
             }
         }
 
         if (m_numServices == m_numResponse) {
-            Utils::async([=] {
-                onFinished(true, "");
-            });
+            signalFinished(true, "");
         }
 
         return true;
@@ -213,11 +253,17 @@ namespace CallChainEventHandler
 
     bool SvcClose::cbQuit(LSHandle *lshandle, LSMessage *msg, void *user_data)
     {
-        SvcClose *item = static_cast<SvcClose*>(user_data);
+        auto *holder = static_cast<std::shared_ptr<SvcClose>*>(user_data);
+        if (!holder)
+            return false;
+
+        std::shared_ptr<SvcClose> item = *holder;
+        delete holder;
         if (!item)
             return false;
 
-        pbnjson::JValue json = JUtil::parse(LSMessageGetPayload(msg), std::string(""));
+        const char *payload = LSMessageGetPayload(msg);
+        pbnjson::JValue json = JUtil::parse(payload ? payload : "", std::string(""));
         bool returnValue = json["returnValue"].asBool();
 
         if (!returnValue) {
@@ -225,14 +271,14 @@ namespace CallChainEventHandler
             if (errorText.empty())
                 errorText = "Failed to quit nodejs service";
 
-            Utils::async([=] { item->onFinished(false, std::move(errorText)); });
+            item->signalFinished(false, std::move(errorText));
 
             return true;
         }
 
         ++(item->m_numResponse);
         if (item->m_numResponse == item->m_numServices) {
-            Utils::async([=] { item->onFinished(true, ""); });
+            item->signalFinished(true, "");
         }
 
         return true;
