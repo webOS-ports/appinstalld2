@@ -86,6 +86,9 @@ bool AppInstallService::cb_install(LSMessage &message)
     if (id.empty())
         return LSUtils::replyError(&request, APP_INSTALL_ERR_BADPARAM, "id is empty");
 
+    if (!Utils::isValidAppId(id))
+        return LSUtils::replyError(&request, APP_INSTALL_ERR_BADPARAM, "invalid id");
+
     if (ipkUrl.empty()){
         return LSUtils::replyError(&request, APP_INSTALL_ERR_BADPARAM, "ipkUrl is empty");
     }
@@ -129,7 +132,7 @@ bool AppInstallService::cb_install(LSMessage &message)
         return LSUtils::replyError(&request, errorCode, std::move(errorText));
     }
 
-    LSError lserror;
+    LSErrorSafe lserror;
     bool subscribed = false;
     if (request.isSubscription())
         subscribed = LSSubscriptionAdd(Handle::get(),
@@ -143,9 +146,9 @@ bool AppInstallService::cb_install(LSMessage &message)
 
     try {
         request.respond(JUtil::toSimpleString(std::move(reply)).c_str());
-    } catch (const LS::Error &lserror) {
+    } catch (const LS::Error &respondError) {
         LOG_ERROR(MSGID_LSCALL_ERR, 1,
-                  PMLOGKS("[AppInstallService]-install", lserror.what()),
+                  PMLOGKS("[AppInstallService]-install", respondError.what()),
                   "");
         return false;
     }
@@ -155,11 +158,20 @@ bool AppInstallService::cb_install(LSMessage &message)
 bool AppInstallService::cb_appinfoCallback(LSHandle* lshandle, LSMessage* appinfoMsg, void* userData){
 
     JUtil::Error error;
+    JUtil::Error error_appinfo_parse;
     LSMessage *lsm((LSMessage*)userData);
+    if (nullptr == lsm){
+        LOG_ERROR(MSGID_APPREMOVE_FAIL, 1, PMLOGKS(REASON,"Failed to remove,userdata invalid"), "");
+        return true;
+    }
     Message request(lsm);
 
-    pbnjson::JValue response = JUtil::parse(LSMessageGetPayload(appinfoMsg), std::string(""));
-    if(response.hasKey("errorCode")){
+    const char *appinfoPayload = LSMessageGetPayload(appinfoMsg);
+    pbnjson::JValue response = JUtil::parse(appinfoPayload ? appinfoPayload : "", std::string(""), &error_appinfo_parse);
+    bool retVal = response.hasKey("returnValue")? response["returnValue"].asBool(): true;
+    if((error_appinfo_parse.code() != JUtil::Error::ErrorCode::None) ||
+       response.hasKey("errorCode") ||
+       retVal == false){
         bool ret = LSUtils::replyError(&request, APP_INSTALL_ERR_BADPARAM, "No such id");
         LSMessageUnref(lsm);
         return ret;
@@ -198,7 +210,7 @@ bool AppInstallService::cb_appinfoCallback(LSHandle* lshandle, LSMessage* appinf
         return ret;
     }
 
-    LSError lserror;
+    LSErrorSafe lserror;
     bool subscribed = false;
     if (request.isSubscription())
         subscribed = LSSubscriptionAdd(lshandle,
@@ -212,8 +224,8 @@ bool AppInstallService::cb_appinfoCallback(LSHandle* lshandle, LSMessage* appinf
 
     try {
         request.respond(JUtil::toSimpleString(std::move(reply)).c_str());
-    } catch (const LS::Error &lserror) {
-        LOG_ERROR(MSGID_LSCALL_ERR, 1, PMLOGKS("[AppInstallService]-remove", lserror.what()), "");
+    } catch (const LS::Error &respondError) {
+        LOG_ERROR(MSGID_LSCALL_ERR, 1, PMLOGKS("[AppInstallService]-remove", respondError.what()), "");
         LSMessageUnref(lsm);
         return false;
     }
@@ -236,24 +248,28 @@ bool AppInstallService::cb_remove(LSMessage &message)
     if (id.empty())
         return LSUtils::replyError(&request, APP_INSTALL_ERR_BADPARAM, "id is empty");
 
-    std::string payload("{\"id\" : \"");
-    payload +=id;
-    payload +="\"}";
+    if (!Utils::isValidAppId(id))
+        return LSUtils::replyError(&request, APP_INSTALL_ERR_BADPARAM, "invalid id");
 
-    LSError lserror;
-    LSErrorInit(&lserror);
+    pbnjson::JValue payloadObj = pbnjson::Object();
+    payloadObj.put("id", id);
+    std::string payload = JUtil::toSimpleString(std::move(payloadObj));
+
+    LSErrorSafe lserror;
 
     LSMessageRef(&message);
 
-    if (!LSCall(Handle::get(),
-                "luna://com.webos.applicationManager/getAppInfo",
-                payload.c_str(),
-                cb_appinfoCallback,
-                &message,
-                NULL,
-                &lserror))
+    if (!LSCallOneReply(Handle::get(),
+                        "luna://com.webos.applicationManager/getAppInfo",
+                        payload.c_str(),
+                        cb_appinfoCallback,
+                        &message,
+                        NULL,
+                        &lserror))
     {
         LSErrorPrint(&lserror, stderr);
+        LSMessageUnref(&message);
+        return LSUtils::replyError(&request, APP_REMOVE_ERR_GENERAL, "Failed to query application info");
     }
 
     return true;
@@ -270,7 +286,7 @@ bool AppInstallService::cb_status(LSMessage &message)
         return LSUtils::replyError(&request, APP_INSTALL_ERR_BADPARAM, error.detail());
     }
 
-    LSError lserror;
+    LSErrorSafe lserror;
     bool subscribed = false;
     if (request.isSubscription())
         subscribed = LSSubscriptionAdd(Handle::get(), "status", &message, &lserror);
@@ -284,8 +300,8 @@ bool AppInstallService::cb_status(LSMessage &message)
 
     try {
         request.respond(JUtil::toSimpleString(std::move(reply)).c_str());
-    } catch (const LS::Error &lserror) {
-        LOG_ERROR(MSGID_LSCALL_ERR, 1, PMLOGKS("[AppInstallService]-status", lserror.what()), "");
+    } catch (const LS::Error &respondError) {
+        LOG_ERROR(MSGID_LSCALL_ERR, 1, PMLOGKS("[AppInstallService]-status", respondError.what()), "");
         return false;
     }
 
@@ -307,6 +323,9 @@ bool AppInstallService::cb_dev_install(LSMessage &message)
 
     if (id.empty())
         return LSUtils::replyError(&request, APP_INSTALL_ERR_BADPARAM, "id is empty");
+
+    if (!Utils::isValidAppId(id))
+        return LSUtils::replyError(&request, APP_INSTALL_ERR_BADPARAM, "invalid id");
 
     if (ipkUrl.empty()){
         return LSUtils::replyError(&request, APP_INSTALL_ERR_BADPARAM, "ipkUrl is empty");
@@ -355,7 +374,7 @@ bool AppInstallService::cb_dev_install(LSMessage &message)
         return LSUtils::replyError(&request, errorCode, std::move(errorText));
     }
 
-    LSError lserror;
+    LSErrorSafe lserror;
     bool subscribed = false;
     if (request.isSubscription())
         subscribed = LSSubscriptionAdd(Handle::get(),
@@ -369,8 +388,8 @@ bool AppInstallService::cb_dev_install(LSMessage &message)
 
     try {
         request.respond(JUtil::toSimpleString(std::move(reply)).c_str());
-    } catch (const LS::Error &lserror) {
-        LOG_ERROR(MSGID_LSCALL_ERR, 1, PMLOGKS("[AppInstallService]-dev/install", lserror.what()), "");
+    } catch (const LS::Error &respondError) {
+        LOG_ERROR(MSGID_LSCALL_ERR, 1, PMLOGKS("[AppInstallService]-dev/install", respondError.what()), "");
         return false;
     }
 
@@ -383,13 +402,14 @@ bool AppInstallService::cb_dev_appinfoCallback(LSHandle* lshandle, LSMessage* ap
     JUtil::Error error_appinfo_parse;
 
     LSMessage *lsm((LSMessage*)userData);
-    Message request(lsm);
     if (nullptr == lsm){
         LOG_ERROR(MSGID_APPREMOVE_FAIL, 1, PMLOGKS(REASON,"Failed to remove,userdata invalid"), "");
         return true;
     }
+    Message request(lsm);
 
-    pbnjson::JValue response = JUtil::parse(LSMessageGetPayload(appinfoMsg), std::string(""),&error_appinfo_parse);
+    const char *appinfoPayload = LSMessageGetPayload(appinfoMsg);
+    pbnjson::JValue response = JUtil::parse(appinfoPayload ? appinfoPayload : "", std::string(""),&error_appinfo_parse);
     bool retVal = response.hasKey("returnValue")? response["returnValue"].asBool(): true;
 
     if ((error_appinfo_parse.code() != JUtil::Error::ErrorCode::None) ||
@@ -397,18 +417,17 @@ bool AppInstallService::cb_dev_appinfoCallback(LSHandle* lshandle, LSMessage* ap
         retVal == false ){
 
         pbnjson::JValue reply = pbnjson::Object();
-        if (reply.isNull()){
-            return false;
-        }
         reply.put("returnValue", false);
         reply.put("errorCode", APP_INSTALL_ERR_BADPARAM);
         reply.put("errorText", "No such id");
         reply.put("subscribed", false);
 
-        LSError lserror;
+        LSErrorSafe lserror;
 
-        LSMessageRespond(lsm, reply.stringify().c_str(), &lserror);
+        if (!LSMessageRespond(lsm, reply.stringify().c_str(), &lserror))
+            LSErrorPrint(&lserror, stderr);
 
+        LSMessageUnref(lsm);
         return true;
     }
 
@@ -449,7 +468,7 @@ bool AppInstallService::cb_dev_appinfoCallback(LSHandle* lshandle, LSMessage* ap
         return ret;
     }
 
-    LSError lserror;
+    LSErrorSafe lserror;
     bool subscribed = false;
     if (request.isSubscription())
         subscribed = LSSubscriptionAdd(lshandle,
@@ -463,8 +482,8 @@ bool AppInstallService::cb_dev_appinfoCallback(LSHandle* lshandle, LSMessage* ap
 
     try {
         request.respond(JUtil::toSimpleString(std::move(reply)).c_str());
-    } catch (const LS::Error &lserror) {
-        LOG_ERROR(MSGID_LSCALL_ERR, 1, PMLOGKS("[AppInstallService]-remove", lserror.what()), "");
+    } catch (const LS::Error &respondError) {
+        LOG_ERROR(MSGID_LSCALL_ERR, 1, PMLOGKS("[AppInstallService]-remove", respondError.what()), "");
         LSMessageUnref(lsm);
         return false;
     }
@@ -487,24 +506,28 @@ bool AppInstallService::cb_dev_remove(LSMessage &message)
     if (id.empty())
         return LSUtils::replyError(&request, APP_INSTALL_ERR_BADPARAM, "id is empty");
 
-    std::string payload("{\"id\" : \"");
-    payload +=id;
-    payload +="\"}";
+    if (!Utils::isValidAppId(id))
+        return LSUtils::replyError(&request, APP_INSTALL_ERR_BADPARAM, "invalid id");
 
-    LSError lserror;
-    LSErrorInit(&lserror);
+    pbnjson::JValue payloadObj = pbnjson::Object();
+    payloadObj.put("id", id);
+    std::string payload = JUtil::toSimpleString(std::move(payloadObj));
+
+    LSErrorSafe lserror;
 
     LSMessageRef(&message);
 
-    if (!LSCall(Handle::get(),
-                "luna://com.webos.applicationManager/getAppInfo",
-                payload.c_str(),
-                cb_dev_appinfoCallback,
-                &message,
-                NULL,
-                &lserror))
+    if (!LSCallOneReply(Handle::get(),
+                        "luna://com.webos.applicationManager/getAppInfo",
+                        payload.c_str(),
+                        cb_dev_appinfoCallback,
+                        &message,
+                        NULL,
+                        &lserror))
     {
         LSErrorPrint(&lserror, stderr);
+        LSMessageUnref(&message);
+        return LSUtils::replyError(&request, APP_REMOVE_ERR_GENERAL, "Failed to query application info");
     }
 
     return true;

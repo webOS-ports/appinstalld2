@@ -159,7 +159,17 @@ bool LSUtils::replyError(Message *LSRequest, int errorCode, std::string errorTex
     reply.put("errorText", errorText);
     reply.put("subscribed", false);
 
-    LSRequest->respond(JUtil::toSimpleString(std::move(reply)).c_str());
+    // respond() throws LS::Error when the reply cannot be delivered (e.g. the
+    // caller already disconnected). Handlers run inside luna-service2's C
+    // dispatch code, so an escaping exception would terminate the daemon.
+    try {
+        LSRequest->respond(JUtil::toSimpleString(std::move(reply)).c_str());
+    } catch (const LS::Error &lserror) {
+        LOG_WARNING(MSGID_LSCALL_ERR, 1,
+                    PMLOGKS(LOGKEY_ERRTEXT, lserror.what()),
+                    "Failed to deliver error reply");
+        return false;
+    }
 
     return true;
 }
