@@ -214,6 +214,7 @@ private:
     bool m_allowReInstall;
     bool m_update;
     bool m_verify;
+    bool m_isPWA = false;
 
 };
 

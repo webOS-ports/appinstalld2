@@ -40,37 +40,54 @@ bool ServiceUninstallStep::proceed(Task *task)
     ServiceInstallerUtility::PathInfos pathInfos;
     std::string lunaFilesPath;
 
+    // the Settings getters return raw pointers that are NULL when the
+    // corresponding directory is not configured; std::string(NULL) is UB
+    auto makePathInfo = [](bool verified, const std::string &files,
+                           ServiceInstallerUtility::PathInfo &out) -> bool {
+        const char *roled = Settings::instance().getLunaUnifiedRolesDir(verified);
+        const char *serviced = Settings::instance().getLunaUnifiedServicesDir(verified);
+        const char *permissiond = Settings::instance().getLunaUnifiedPermissionsDir(verified, true);
+        const char *apiPermissiond = Settings::instance().getLunaUnifiedAPIPermissionsDir(verified);
+        const char *groupd = Settings::instance().getLunaUnifiedGroupsDir(verified);
+        const char *manifestsd = Settings::instance().getLunaUnifiedManifestsDir(verified, true);
+        if (!roled || !serviced || !permissiond || !apiPermissiond || !groupd || !manifestsd)
+            return false;
+        out = ServiceInstallerUtility::PathInfo {
+            verified,
+            "",
+            files + std::string("/roles"),
+            files + std::string("/services"),
+            roled,
+            serviced,
+            permissiond,
+            apiPermissiond,
+            groupd,
+            manifestsd
+        };
+        return true;
+    };
+
     if (verify)
     {
         lunaFilesPath = Settings::instance().getLunaFilesPath(true);
-        pathInfos.push_back(ServiceInstallerUtility::PathInfo {
-            true,
-            "",
-            lunaFilesPath + std::string("/roles"),
-            lunaFilesPath + std::string("/services"),
-            Settings::instance().getLunaUnifiedRolesDir(true),
-            Settings::instance().getLunaUnifiedServicesDir(true),
-            Settings::instance().getLunaUnifiedPermissionsDir(true, true),
-            Settings::instance().getLunaUnifiedAPIPermissionsDir(true),
-            Settings::instance().getLunaUnifiedGroupsDir(true),
-            Settings::instance().getLunaUnifiedManifestsDir(true, true)
-        });
+        ServiceInstallerUtility::PathInfo info{};
+        if (!makePathInfo(true, lunaFilesPath, info)) {
+            LOG_DEBUG("[ServiceUninstallStep::proceed] luna dirs not configured");
+            return false;
+        }
+        pathInfos.push_back(std::move(info));
     }
 
     // unverified internal
     lunaFilesPath = Settings::instance().getLunaFilesPath(false);
-    pathInfos.push_back(ServiceInstallerUtility::PathInfo {
-        false,
-        "",
-        lunaFilesPath + std::string("/roles"),
-        lunaFilesPath + std::string("/services"),
-        Settings::instance().getLunaUnifiedRolesDir(false),
-        Settings::instance().getLunaUnifiedServicesDir(false),
-        Settings::instance().getLunaUnifiedPermissionsDir(false, true),
-        Settings::instance().getLunaUnifiedAPIPermissionsDir(false),
-        Settings::instance().getLunaUnifiedGroupsDir(false),
-        Settings::instance().getLunaUnifiedManifestsDir(false, true)
-    });
+    {
+        ServiceInstallerUtility::PathInfo info{};
+        if (!makePathInfo(false, lunaFilesPath, info)) {
+            LOG_DEBUG("[ServiceUninstallStep::proceed] luna dirs not configured");
+            return false;
+        }
+        pathInfos.push_back(std::move(info));
+    }
 
     for (unsigned i = 0; i < pathInfos.size(); i++) {
         ServiceInstallerUtility::PathInfo& pathInfo = pathInfos.at(i);

@@ -55,7 +55,8 @@ bool IpkInstallStep::proceed(Task *task)
     pbnjson::JValue param = m_parentTask->getParam();
     bool verify = param["verify"].asBool();
     std::string ipkFile= param["ipkurl"].asString();
-    bool allowDowngrade = param["allowDowngrade"].asBool();
+    // the task stores this flag under "downgrade" (see AppInstaller::install)
+    bool allowDowngrade = param["downgrade"].asBool();
 
     if( 0 == ipkFile.find("file://") ) {
         // uri pointing to local file => transform to file path
@@ -73,8 +74,10 @@ bool IpkInstallStep::proceed(Task *task)
         task->setError(ErrorInstall, APP_INSTALL_ERR_GENERAL, "unable to call ApplicationInstallerUtility");
         return false;
     case AppInstallerUtility::LOCKED:
-        //pause(Task::SYSTEM);
-        return true;
+        // no child was spawned and no callback is pending: returning "success"
+        // here would leave the task stuck forever and its app id blocked
+        task->setError(ErrorInstall, APP_INSTALL_ERR_TARGETISBUSY, "another install is in progress");
+        return false;
     default:
         break;
     }

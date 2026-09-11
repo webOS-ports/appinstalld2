@@ -369,7 +369,9 @@ namespace CallChainEventHandler
         LOG_DEBUG("Remove Complete with %d", status);
 
         if (!WIFEXITED(status) || (WEXITSTATUS(status) != 0)) {
-            switch (WEXITSTATUS(status))
+            // WEXITSTATUS is only meaningful for a normal exit; a signal-killed
+            // child must be treated as a failure, not decoded into error codes
+            switch (WIFEXITED(status) ? WEXITSTATUS(status) : AI_ERR_REMOVE_FAILEDIPKGREMOVE)
             {
                 case AI_ERR_INSTALL_TARGETNOTFOUND:
                     break;

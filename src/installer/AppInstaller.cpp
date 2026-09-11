@@ -168,6 +168,10 @@ void AppInstaller::onFinishTask(const Task &task)
         if (task.isUnpacked()) {
             LOG_DEBUG("[AppInstaller]::onFinishTask: clean up packed files by install task error\n");
             std::string id = task.getAppId();
+            // clean up against the same install root the failed task used:
+            // a dev-mode (verify == false) install must not be removed as an
+            // internal one
+            bool verify = task.getParam()["verify"].asBool();
             Utils::async([=] {
                 pbnjson::JValue appInfo = pbnjson::Object();
                 pbnjson::JValue details = pbnjson::Object();
@@ -179,7 +183,7 @@ void AppInstaller::onFinishTask(const Task &task)
                 int errorCode = 0;
                 std::string errorText;
 
-                remove(id, appInfo, errorCode, errorText);
+                remove(id, appInfo, errorCode, errorText, verify);
             });
         }
     }
