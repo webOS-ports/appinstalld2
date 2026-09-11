@@ -16,6 +16,9 @@
 
 #include "UnpackagedInstallStep.h"
 #include <functional>
+#include <glob.h>
+#include <string.h>
+#include <unistd.h>
 #include "installer/AppInfo.h"
 #include "installer/Task.h"
 #include "settings/Settings.h"
@@ -87,17 +90,33 @@ bool UnpackagedInstallStep::proceed(Task *task)
     int step = MKDIR_APP;
     if (Utils::make_dir(app_path + m_appId + "/", true))
     {
-        std::string cmd = "cp " + unpackaged_data + "/icon* " + app_path + m_appId + "/";
+        // Copy the icons and appinfo.json ourselves; the source directory
+        // comes straight from the caller's ipkUrl, so no shell may ever see it
+        std::string destDir = app_path + m_appId + "/";
 
-        LOG_DEBUG("UnpackagedInstallStep::%s() cmd = %s \n", __FUNCTION__, cmd.c_str());
         step = COPY_ICON;
-        if (!system(cmd.c_str()))
+        bool copiedIcons = true;
+        glob_t iconGlob;
+        memset(&iconGlob, 0, sizeof(iconGlob));
+        int globResult = glob((unpackaged_data + "/icon*").c_str(), 0, nullptr, &iconGlob);
+        if (globResult == 0) {
+            for (size_t i = 0; i < iconGlob.gl_pathc; ++i) {
+                std::string srcFile = iconGlob.gl_pathv[i];
+                std::string baseName = srcFile.substr(srcFile.find_last_of('/') + 1);
+                if (!Utils::copy_file(srcFile, destDir + baseName)) {
+                    copiedIcons = false;
+                    break;
+                }
+            }
+        } else if (globResult != GLOB_NOMATCH) {
+            copiedIcons = false;
+        }
+        globfree(&iconGlob);
+
+        if (copiedIcons)
         {
             step = COPY_APPINFO;
-            cmd = "cp " + unpackaged_data + "/appinfo.json " + app_path + m_appId + "/";
-
-            LOG_DEBUG("UnpackagedInstallStep::%s() cmd = %s \n", __FUNCTION__, cmd.c_str());
-            if (!system(cmd.c_str()))
+            if (Utils::copy_file(unpackaged_data + "/appinfo.json", destDir + "appinfo.json"))
             {
                 LOG_DEBUG("UnpackagedInstallStep::%s() succses\n", __FUNCTION__);
                 sync();
