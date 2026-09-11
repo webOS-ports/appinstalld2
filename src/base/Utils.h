@@ -84,6 +84,9 @@ public:
     //! Remove file
     static bool remove_file(const std::string &path);
 
+    //! Copy a single file (no shell involved)
+    static bool copy_file(const std::string &srcPath, const std::string &destPath);
+
     //! Get file size
     static long long file_size(const std::string &path);
 
@@ -98,6 +101,10 @@ public:
 
     //! It's a file(file/dir)
     static bool is_File_exist(const std::string &path);
+
+    //! Validate an application id before it is used in filesystem paths,
+    //! shell-adjacent tools and hand-built payloads.
+    static bool isValidAppId(const std::string &appId);
 
     //! Make std::string for type T
     template <class T>
