@@ -22,7 +22,8 @@ cmake_minimum_required(VERSION 2.8.7)
 
 project(appinstalld C CXX)
 
-set(CMAKE_BUILD_TYPE Debug)
+# Let the build system (e.g. OE toolchain flags) decide the optimization
+# level; forcing Debug shipped -O0 binaries and broke _FORTIFY_SOURCE.
 
 include(webOS/webOS)
 webos_modules_init(1 5 0)
