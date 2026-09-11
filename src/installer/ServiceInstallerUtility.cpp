@@ -425,15 +425,15 @@ bool ServiceInstallerUtility::generateUnifiedAppPermissionsFile(const std::strin
 
     JValue groups = Array();
 
-    JValue requires = appInfo.getRequiredPermissions();
-    static const JSchemaFragment requires_schema { R"(
+    JValue requiredPermissions = appInfo.getRequiredPermissions();
+    static const JSchemaFragment requiredPermissionsSchema { R"(
         {
             "type": "array",
             "items": {"type": "string"}
         }
     )" };
-    if (JValidator { }.isValid(requires, requires_schema, nullptr)) {
-        groups = std::move(requires);
+    if (JValidator { }.isValid(requiredPermissions, requiredPermissionsSchema, nullptr)) {
+        groups = std::move(requiredPermissions);
     } else {
         LOG_WARNING(MSGID_WRONG_SERVICEID, 1,
                     PMLOGKS("APP_ID", id.c_str()),
@@ -642,7 +642,7 @@ bool ServiceInstallerUtility::generateGroupFileForServiceNewSchema(const std::st
             std::string groupName =  servicesInfo.getId() + "." + groupListItem ["name"].asString();
             groupTrustLevelArray <<  groupListItem ["acgTrustLevel"];
             LOG_DEBUG("[ServiceInstallerUtility::generateGroupFileForServiceNewSchema]  groupListItem : %s", groupListItem.stringify().c_str());
-            LOG_DEBUG("[ServiceInstallerUtility::generateGroupFileForServiceNewSchema]  groupName : %s", groupName);
+            LOG_DEBUG("[ServiceInstallerUtility::generateGroupFileForServiceNewSchema]  groupName : %s", groupName.c_str());
             group.put(groupName, groupTrustLevelArray);
         }
     }

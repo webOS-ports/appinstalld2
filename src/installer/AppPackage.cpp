@@ -14,7 +14,9 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+#include <algorithm>
 #include <boost/algorithm/string.hpp>
+#include <cctype>
 #include <boost/lexical_cast.hpp>
 #include <fstream>
 #include <sstream>
@@ -202,8 +204,23 @@ bool AppPackage::parseControl(std::string controlFilePath, AppPackage::Control &
                 control.m_version = value;
             else if (field == "Architecture")
                 control.m_architecture = value;
-            else if (field == "Installed-Size")
-                control.m_installedSize = boost::lexical_cast<uint64_t>(value);
+            else if (field == "Installed-Size") {
+                // control files come out of untrusted ipks: a malformed size
+                // must not take the whole service down; note lexical_cast
+                // silently wraps negative input for unsigned targets
+                bool numeric = !value.empty() &&
+                    std::all_of(value.begin(), value.end(),
+                                [](unsigned char c) { return std::isdigit(c); });
+                if (numeric) {
+                    try {
+                        control.m_installedSize = boost::lexical_cast<uint64_t>(value);
+                    } catch (const boost::bad_lexical_cast &) {
+                        control.m_installedSize = 0;
+                    }
+                } else {
+                    control.m_installedSize = 0;
+                }
+            }
         }
 
         file.close();
