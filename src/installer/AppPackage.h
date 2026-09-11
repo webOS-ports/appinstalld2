@@ -81,6 +81,14 @@ private:
     std::function<void (bool)> m_funcExtracted;
 
     bool m_canceled = false;
+    guint m_watchId = 0;
+    GPid m_childPid = -1;
+
+public:
+    AppPackage() = default;
+    ~AppPackage();
+    AppPackage(const AppPackage&) = delete;
+    AppPackage& operator=(const AppPackage&) = delete;
 };
 
 #endif
