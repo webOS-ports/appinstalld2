@@ -90,6 +90,12 @@ SET (EXT_LIBS
 
 target_link_libraries(${CMAKE_PROJECT_NAME} ${EXT_LIBS})
 
+option(BUILD_TESTS "Build the unit test binary" OFF)
+if(BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests/unit)
+endif()
+
 set(webos_program_NAME ${CMAKE_PROJECT_NAME})
 set(permissions PERMISSIONS OWNER_READ OWNER_EXECUTE)
 _webos_set_bin_inst_dir(destdir TRUE FALSE)
