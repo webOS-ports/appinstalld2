@@ -40,6 +40,10 @@ int App::run()
         return 0;
 
     g_main_loop_run(m_mainLoop);
+
+    // tear down only after the loop has fully returned, so no source is
+    // dispatched against already-destroyed services
+    destroy();
     return 0;
 }
 
@@ -48,8 +52,6 @@ void App::quit()
     if (m_mainLoop) {
         g_main_loop_quit(m_mainLoop);
     }
-
-    destroy();
 }
 
 void App::destroy()

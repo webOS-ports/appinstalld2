@@ -73,8 +73,8 @@ bool Task::initialize(pbnjson::JValue param)
     std::string url = param["ipkurl"].asString();
     LOG_DEBUG("Task::initialize()  %s %s \n", m_name.c_str(), url.c_str());
 
-    bool isPWA =  Utils::isPWA(url);
-    if (m_name == "InstallTask" && isPWA)
+    m_isPWA = (m_name == "InstallTask" && Utils::isPWA(url));
+    if (m_isPWA)
     {
         m_step = GetIpkInfoComplete;
 
@@ -85,13 +85,12 @@ bool Task::initialize(pbnjson::JValue param)
 
         LOG_DEBUG("Task::initialize()  PackageId %s \n", m_appId.c_str());
         setPackageId(m_appId);
+    }
 
-        StepFactory::instance().registerObject("IpkInstallNeeded", CreatorUsingNew<UnpackagedInstallStep>());
-    }
-    else
-    {
-        StepFactory::instance().registerObject("IpkInstallNeeded", CreatorUsingNew<IpkInstallStep>());
-    }
+    // the PWA variant of the install step is chosen per task in createStep():
+    // registering it here would repoint the process-wide factory for every
+    // concurrently running task
+    StepFactory::instance().registerObject("IpkInstallNeeded", CreatorUsingNew<IpkInstallStep>());
 
     StepFactory::instance().registerObject("IpkParseNeeded", CreatorUsingNew<IpkParseStep>());
     StepFactory::instance().registerObject("GetIpkInfoNeeded", CreatorUsingNew<GetIpkInfoStep>());
@@ -461,7 +460,14 @@ void Task::finish()
 #endif
 
     signalFinished(*this);
-    m_currentStep = nullptr;
+    // finish() is regularly reached from inside the current step's own
+    // callback: destroying the step now would free the std::function that is
+    // still executing. Keep it alive until the stack unwinds.
+    if (m_currentStep) {
+        auto outgoingStep = m_currentStep;
+        m_currentStep = nullptr;
+        Utils::async([outgoingStep] {});
+    }
     m_finished = true;
 }
 
@@ -491,6 +497,10 @@ bool Task::proceed()
 
 std::shared_ptr<Step> Task::createStep(TaskStep step)
 {
+    // per-task decision, see Task::initialize()
+    if (step == IpkInstallNeeded && m_isPWA)
+        return std::make_shared<UnpackagedInstallStep>();
+
     TaskStepParser parser;
     auto stepTask = StepFactory::instance().create(parser.enumToStringStep(step));
     return stepTask;
@@ -500,6 +510,13 @@ bool Task::onProceed(TaskStep step)
 {
     TaskStepParser parser;
     bool success = false;
+    // proceed() is regularly called from inside the outgoing step's own
+    // callback; keep that step alive until the stack unwinds so we do not
+    // destroy the std::function currently executing
+    if (m_currentStep) {
+        auto outgoingStep = m_currentStep;
+        Utils::async([outgoingStep] {});
+    }
     m_currentStep = createStep(step);
     if (!m_currentStep) {
         return false;

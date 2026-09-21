@@ -26,22 +26,11 @@
 #include "util/JValueUtil.h"
 #include "util/Logger.h"
 
+#include "base/LSUtils.h"
+
 using namespace std;
 using namespace LS;
 using namespace pbnjson;
-
-class LSErrorSafe: public LSError {
-public:
-    LSErrorSafe()
-    {
-        LSErrorInit(this);
-    }
-
-    ~LSErrorSafe()
-    {
-        LSErrorFree(this);
-    }
-};
 
 class AbsLunaClient : public IClassName {
 public:

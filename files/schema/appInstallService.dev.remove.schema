@@ -4,6 +4,7 @@
     "properties" : {
         "id" : {
             "type" : "string",
+            "maxLength" : 256,
             "description" : "ID of application to be removed."
         },
         "subscribe" : {

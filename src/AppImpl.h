@@ -33,7 +33,7 @@ public:
 
 protected:
     //! This is called when process receive signal
-    static void term_handler(int signal);
+    static gboolean term_handler(gpointer user_data);
 
     //! This is called when App is created
     virtual bool onCreate();

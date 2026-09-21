@@ -48,7 +48,7 @@
         PmLogDebug(getPmLogContext(), ##__VA_ARGS__)
 
 /* Logging for history context ********/
-#define LOG_HISTORY_CRITICAL(...) \
+#define LOG_HISTORY_CRITICAL(msgid, kvcount, ...) \
         PmLogCritical(getPmLogHistoryContext(), msgid, kvcount, ##__VA_ARGS__)
 
 #define LOG_HISTORY_ERROR(msgid, kvcount, ...) \

@@ -30,7 +30,9 @@
 class CallChain;
 
 //! This class is base class for CallChain class's item
-class CallItem {
+//! Items are always owned by std::shared_ptr (CallChain stores them that
+//! way), so enable_shared_from_this lets async callbacks keep them alive.
+class CallItem : public std::enable_shared_from_this<CallItem> {
 friend class CallChain;
 public:
     typedef enum {
@@ -158,7 +160,8 @@ private:
     std::string m_serviceName;
     std::string m_uri;
     std::string m_payload;
-    const char *m_sessionId;
+    bool m_hasSessionId;
+    std::string m_sessionId;
 };
 
 //! This class helps call the items in consecutive order
@@ -217,6 +220,7 @@ private:
 
     CallCompleteHandler m_handler;
     void *m_user_data;
+    bool m_finished = false;
 };
 
 #endif

@@ -39,7 +39,7 @@ gboolean AppInstallerUtility::cbChildProgress(GIOChannel *channel, GIOCondition 
 {
     GString *str = g_string_new("");
     GError *error = NULL;
-    
+
     if(str!=NULL) {
     GIOStatus status = g_io_channel_read_line_string(channel, str, NULL, &error);
     if (status != G_IO_STATUS_NORMAL) {
@@ -52,7 +52,10 @@ gboolean AppInstallerUtility::cbChildProgress(GIOChannel *channel, GIOCondition 
         }
 
         g_string_free(str, TRUE);
-        return true;
+        // on EOF/error the fd stays readable forever: keeping the watch
+        // alive would spin the main loop at 100% and starve the
+        // lower-priority child-exit watch
+        return status == G_IO_STATUS_AGAIN;
     }
     
     LOG_DEBUG("Got status message from child: %s\n", str->str);
@@ -81,8 +84,16 @@ void AppInstallerUtility::cbChildComplete(GPid pid, gint status, gpointer user_d
     AppInstallerUtility *installer = reinterpret_cast<AppInstallerUtility*>(user_data);
     AppInstallerUtility::m_locked = false;
 
-    if (installer)
-        installer->m_funcComplete(status);
+    g_spawn_close_pid(pid);
+
+    if (installer) {
+        // a child watch fires exactly once and is removed automatically:
+        // forget the id so clear() does not remove an unrelated source
+        installer->m_sourceId = 0;
+        installer->m_pid = -1;
+        if (installer->m_funcComplete)
+            installer->m_funcComplete(status);
+    }
 }
 
 AppInstallerUtility::AppInstallerUtility()
@@ -157,7 +168,7 @@ AppInstallerUtility::Result AppInstallerUtility::install(std::string target,
         argv[index++] = (gchar*) "-r";
     argv[index] = NULL;
 
-    std::string opkgLockPath = getOpkgLockPath(installBasePath);
+    std::string opkgLockPath = getOpkgLockPath(opkgBasePath);
     if (!Utils::make_dir(opkgLockPath.c_str(), true)) {
         LOG_ERROR(MSGID_APPINSTALL_FAIL, 2,
                   PMLOGKS(REASON, "Failed to create opkg lock directory"),
@@ -180,6 +191,7 @@ AppInstallerUtility::Result AppInstallerUtility::install(std::string target,
 
     if (result) {
         m_childStdOutChannel = g_io_channel_unix_new(childStdoutFd);
+        g_io_channel_set_close_on_unref(m_childStdOutChannel, TRUE);
         m_childStdOutSource = g_io_create_watch(m_childStdOutChannel, G_IO_IN);
         g_source_set_callback(m_childStdOutSource, (GSourceFunc)cbChildProgress, this, NULL);
         MainApp::instance().attach(m_childStdOutSource);
@@ -260,6 +272,7 @@ AppInstallerUtility::Result AppInstallerUtility::remove(std::string appId, bool 
 
     if (result) {
         m_childStdOutChannel = g_io_channel_unix_new(childStdoutFd);
+        g_io_channel_set_close_on_unref(m_childStdOutChannel, TRUE);
         m_childStdOutSource = g_io_create_watch(m_childStdOutChannel, G_IO_IN);
         g_source_set_callback(m_childStdOutSource, (GSourceFunc)cbChildProgress, this, NULL);
         MainApp::instance().attach(m_childStdOutSource);
@@ -315,8 +328,26 @@ void AppInstallerUtility::clear()
         m_childStdOutSource = NULL;
     }
 
-    m_sourceId = 0;
+    // if the child watch has not fired yet it still holds a pointer to this
+    // object: it must never outlive us
+    if (m_sourceId != 0) {
+        g_source_remove(m_sourceId);
+        m_sourceId = 0;
+
+        if (m_pid != -1) {
+            // hand the still-running child to a detached watch so it is
+            // reaped without touching this (possibly destroyed) object
+            g_child_watch_add(m_pid,
+                              [](GPid pid, gint, gpointer) {
+                                  g_spawn_close_pid(pid);
+                                  AppInstallerUtility::m_locked = false;
+                              },
+                              NULL);
+        }
+    }
     m_pid = -1;
+    m_funcProgress = nullptr;
+    m_funcComplete = nullptr;
 }
 
 bool AppInstallerUtility::isLocked() const

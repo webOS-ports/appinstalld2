@@ -44,7 +44,8 @@ bool Jailer::remove(std::string appId, std::function<void(bool)> onRemove)
                            &gerr);
 
     if (result) {
-        g_child_watch_add(childPid, cbRemoveComplete, this);
+        m_childPid = childPid;
+        m_watchId = g_child_watch_add(childPid, cbRemoveComplete, this);
         m_funcComplete = std::move(onRemove);
 
         return true;
@@ -70,10 +71,30 @@ void Jailer::cbRemoveComplete(GPid pid, gint status, gpointer user_data)
     if (!jailer)
         return;
 
+    jailer->m_watchId = 0;
+    jailer->m_childPid = -1;
+    g_spawn_close_pid(pid);
+
     if (!WIFEXITED(status) || (WEXITSTATUS(status) != 0)) {
         jailer->m_funcComplete(false);
         return;
     }
 
     jailer->m_funcComplete(true);
+}
+
+Jailer::~Jailer()
+{
+    // a pending child watch must not call into a destroyed object;
+    // hand the child to an anonymous reaper instead
+    if (m_watchId != 0) {
+        g_source_remove(m_watchId);
+        m_watchId = 0;
+        if (m_childPid != -1)
+            g_child_watch_add(m_childPid,
+                              [](GPid pid, gint, gpointer) {
+                                  g_spawn_close_pid(pid);
+                              },
+                              NULL);
+    }
 }

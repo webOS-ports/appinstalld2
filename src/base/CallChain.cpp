@@ -77,7 +77,10 @@ LSCallItem::LSCallItem(const char *serviceName, const char *uri, const char *pay
     : m_serviceName(serviceName),
       m_uri(uri),
       m_payload(payload),
-      m_sessionId(sessionId)
+      // copy the session id: the caller's buffer (often SessionList entries)
+      // can be freed before this item's turn in the chain arrives
+      m_hasSessionId(sessionId != nullptr),
+      m_sessionId(sessionId != nullptr ? sessionId : "")
 {
 }
 
@@ -90,7 +93,9 @@ bool LSCallItem::Call()
 
     std::string errorText;
     LSCaller caller = LSUtils::acquireCaller(m_serviceName);
-    if (!caller.CallOneReply(m_uri.c_str(), m_payload.c_str(), m_sessionId, LSCallItem::handler, this, NULL, errorText)) {
+    if (!caller.CallOneReply(m_uri.c_str(), m_payload.c_str(),
+                             m_hasSessionId ? m_sessionId.c_str() : nullptr,
+                             LSCallItem::handler, this, NULL, errorText)) {
         onError(errorText.c_str());
         return false;
     }
@@ -138,7 +143,8 @@ bool LSCallItem::handler(LSHandle *lshandle, LSMessage *message, void *user_data
     if (!call)
         return false;
 
-    pbnjson::JValue json = JUtil::parse(LSMessageGetPayload(message), std::string(""));
+    const char *payload = LSMessageGetPayload(message);
+    pbnjson::JValue json = JUtil::parse(payload ? payload : "", std::string(""));
 
     bool result = call->onReceiveCall(json);
 
@@ -207,6 +213,12 @@ bool CallChain::proceed(pbnjson::JValue chainData)
 
 void CallChain::finish(pbnjson::JValue chainData)
 {
+    // A chain may be driven from several callbacks (e.g. parallel replies of
+    // one item); it must complete, and schedule its own deletion, only once
+    if (m_finished)
+        return;
+    m_finished = true;
+
     if (m_handler)
         m_handler(chainData, m_user_data);
 
@@ -215,7 +227,7 @@ void CallChain::finish(pbnjson::JValue chainData)
 
 void CallChain::onCallError(std::string errorText)
 {
-    CallItemPtr call = m_calls.front();
+    CallItemPtr call = m_calls.empty() ? nullptr : m_calls.front();
     if (!call) {
         finish(makeResult(false, errorText));
     } else {
@@ -228,8 +240,13 @@ void CallChain::onCallError(std::string errorText)
 
 void CallChain::onCallFinished(bool result, std::string errorText)
 {
+    if (m_calls.empty()) {
+        finish(makeResult(false, "Callchain broken"));
+        return;
+    }
+
     CallItemPtr call = m_calls.front();
-    if ((m_calls.size() == 0) || (!call)) {
+    if (!call) {
         finish(makeResult(false, "Callchain broken"));
         return;
     }
@@ -245,19 +262,22 @@ void CallChain::onCallFinished(bool result, std::string errorText)
 
     bool processNext = result;
 
-    std::vector<CallConditionPtr>::reverse_iterator it =
-        std::find_if(m_conditions.rbegin(),
-                     m_conditions.rend(),
-                     [=] (const CallConditionPtr p) -> bool {return p->condition_call == call;});
-
-    while (it != m_conditions.rend()) {
-        if (result == (*it)->expected_result) {
-            add((*it)->target_call, true);
+    // enqueue the targets of this call's matching conditions
+    // (last-registered first, as before), then consume only the conditions
+    // that belong to this call — conditions of calls that have not run yet
+    // must stay untouched
+    for (auto rit = m_conditions.rbegin(); rit != m_conditions.rend(); ++rit) {
+        if ((*rit)->condition_call == call && result == (*rit)->expected_result) {
+            add((*rit)->target_call, true);
             processNext = true;
         }
-
-        m_conditions.erase((++it).base());
     }
+    m_conditions.erase(
+        std::remove_if(m_conditions.begin(), m_conditions.end(),
+                       [&] (const CallConditionPtr &p) -> bool {
+                           return p->condition_call == call;
+                       }),
+        m_conditions.end());
 
     if (!processNext &&
         ((call->getOption() & CallItem::OPTION_NONSTOP) == CallItem::OPTION_NONSTOP))

@@ -122,7 +122,7 @@ pbnjson::JSchema JUtil::loadSchema(const std::string& schemaName, bool cache)
             return it->second;
     }
 
-    pbnjson::JSchema schema = pbnjson::JSchemaFile(Settings::instance().getSchemaPath() + schemaName + ".schema");
+    pbnjson::JSchema schema = pbnjson::JSchema::fromFile((Settings::instance().getSchemaPath() + schemaName + ".schema").c_str());
     if (!schema.isInitialized())
         return schema;
 

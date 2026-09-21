@@ -4,6 +4,7 @@
         "appmanager.management",
         "application.operation",
         "database.operation",
-        "servicebus.configuration"
+        "servicebus.configuration",
+        "servicebus.management"
     ]
 }

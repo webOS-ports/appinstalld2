@@ -16,6 +16,8 @@
 
 #include "AppImpl.h"
 
+#include <glib-unix.h>
+
 #include "client/SessionManager.h"
 #include "service/AppInstallService.h"
 #include "settings/Settings.h"
@@ -23,9 +25,12 @@
 
 using namespace std::placeholders;
 
-void AppImpl::term_handler(int signal)
+gboolean AppImpl::term_handler(gpointer user_data)
 {
+    // dispatched from the main loop by g_unix_signal_add, so calling into
+    // glib/luna-service2 here is safe (unlike a raw signal handler)
     MainApp::instance().quit();
+    return G_SOURCE_REMOVE;
 }
 
 AppImpl::AppImpl()
@@ -35,7 +40,7 @@ AppImpl::AppImpl()
 
 bool AppImpl::onCreate()
 {
-    signal(SIGTERM, AppImpl::term_handler);
+    g_unix_signal_add(SIGTERM, AppImpl::term_handler, NULL);
 
     AppInstallService::getInstance().attach(mainLoop());
     SessionManager::getInstance().initialize();
