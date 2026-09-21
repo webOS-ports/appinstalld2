@@ -14,7 +14,9 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+#include <algorithm>
 #include <boost/algorithm/string.hpp>
+#include <cctype>
 #include <boost/lexical_cast.hpp>
 #include <fstream>
 #include <sstream>
@@ -28,11 +30,31 @@
 #define FILENAME_DATA    "data.tar.gz"
 #define FILENAME_DEBIAN  "debian-binary"
 
+AppPackage::~AppPackage()
+{
+    // a still-pending child watch holds a pointer to this object; detach it
+    // and hand the child to an anonymous reaper instead
+    if (m_watchId != 0) {
+        g_source_remove(m_watchId);
+        m_watchId = 0;
+        if (m_childPid != -1)
+            g_child_watch_add(m_childPid,
+                              [](GPid pid, gint, gpointer) {
+                                  g_spawn_close_pid(pid);
+                              },
+                              NULL);
+    }
+}
+
 void AppPackage::cbExtractComplete(GPid pid, gint status, gpointer user_data)
 {
     AppPackage *package = reinterpret_cast<AppPackage*>(user_data);
     if (!package)
         return;
+
+    package->m_watchId = 0;
+    package->m_childPid = -1;
+    g_spawn_close_pid(pid);
 
     if (!WIFEXITED(status) || (WEXITSTATUS(status) != 0) || package->isCanceled()) {
         package->m_funcExtracted(false);
@@ -76,15 +98,16 @@ bool AppPackage::extract(std::string& targetFile,
     gboolean result;
     int index = 0;
 
-    argv[index++] = g_strdup("ar");
-    argv[index++] = g_strdup("x");
-    argv[index++] = g_strdup(targetFile.c_str());
+    // argv only has to live until g_spawn_async returns; no copies needed
+    argv[index++] = (gchar *) "ar";
+    argv[index++] = (gchar *) "x";
+    argv[index++] = (gchar *) targetFile.c_str();
     if (targetItem & CONTROL)
-        argv[index++] = g_strdup(FILENAME_CONTROL);
+        argv[index++] = (gchar *) FILENAME_CONTROL;
     if (targetItem & DATA)
-        argv[index++] = g_strdup(FILENAME_DATA);
+        argv[index++] = (gchar *) FILENAME_DATA;
     if (targetItem & DEBIAN)
-        argv[index++] = g_strdup(FILENAME_DEBIAN);
+        argv[index++] = (gchar *) FILENAME_DEBIAN;
     argv[index] = NULL;
 
     if (targetItem & CONTROL)
@@ -107,7 +130,8 @@ bool AppPackage::extract(std::string& targetFile,
                            &gerr);
 
     if (result) {
-        g_child_watch_add(childPid, cbExtractComplete, this);
+        m_childPid = childPid;
+        m_watchId = g_child_watch_add(childPid, cbExtractComplete, this);
 
         m_targetFile = targetFile;
         m_targetPath = targetPath;
@@ -152,6 +176,7 @@ bool AppPackage::extractOneItem()
     argv[index++] = (gchar *) "tar";
     argv[index++] = (gchar *) "xzf";
     argv[index++] = (gchar *) targetFile.c_str();
+    argv[index++] = (gchar *) "--no-same-owner";
     argv[index] = NULL;
 
     result = g_spawn_async(m_targetPath.c_str(),
@@ -164,7 +189,8 @@ bool AppPackage::extractOneItem()
                            &gerr);
 
     if (result) {
-        g_child_watch_add(childPid, cbExtractComplete, this);
+        m_childPid = childPid;
+        m_watchId = g_child_watch_add(childPid, cbExtractComplete, this);
         return true;
     }
 
@@ -201,8 +227,23 @@ bool AppPackage::parseControl(std::string controlFilePath, AppPackage::Control &
                 control.m_version = value;
             else if (field == "Architecture")
                 control.m_architecture = value;
-            else if (field == "Installed-Size")
-                control.m_installedSize = boost::lexical_cast<uint64_t>(value);
+            else if (field == "Installed-Size") {
+                // control files come out of untrusted ipks: a malformed size
+                // must not take the whole service down; note lexical_cast
+                // silently wraps negative input for unsigned targets
+                bool numeric = !value.empty() &&
+                    std::all_of(value.begin(), value.end(),
+                                [](unsigned char c) { return std::isdigit(c); });
+                if (numeric) {
+                    try {
+                        control.m_installedSize = boost::lexical_cast<uint64_t>(value);
+                    } catch (const boost::bad_lexical_cast &) {
+                        control.m_installedSize = 0;
+                    }
+                } else {
+                    control.m_installedSize = 0;
+                }
+            }
         }
 
         file.close();

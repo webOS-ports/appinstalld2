@@ -73,9 +73,13 @@ namespace CallChainEventHandler
         static bool cbQuit(LSHandle *lshandle, LSMessage *msg, void *user_data);
 
     private:
+        void signalFinished(bool result, std::string errorText);
+
         int m_numResponse;
         int m_numServices;
-        const char *m_sessionId;
+        bool m_signaled;
+        bool m_hasSessionId;
+        std::string m_sessionId;
     };
 
     class RemoveDb : public LSCallItem {

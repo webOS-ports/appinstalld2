@@ -41,6 +41,11 @@ bool IpkParseStep::proceed(Task *task)
     m_appId = param["id"].asString();
     m_ipkFile = param["ipkurl"].asString();
 
+    if( 0 == m_ipkFile.find("file://") ) {
+        // uri pointing to local file => transform to file path
+        m_ipkFile.replace(0,7,"");
+    }
+
     determineInstallPath();
 
     if (!Utils::make_dir(m_installDataPath, true))

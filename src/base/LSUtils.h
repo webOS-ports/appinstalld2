@@ -34,6 +34,23 @@ namespace pbnjson
 
 using namespace LS;
 
+//! RAII wrapper: LSError that is always initialized and always freed
+class LSErrorSafe: public LSError {
+public:
+    LSErrorSafe()
+    {
+        LSErrorInit(this);
+    }
+
+    ~LSErrorSafe()
+    {
+        LSErrorFree(this);
+    }
+
+    LSErrorSafe(const LSErrorSafe&) = delete;
+    LSErrorSafe& operator=(const LSErrorSafe&) = delete;
+};
+
 #define LS_CATEGORY_TABLE_NAME(name) name##_table
 
 #define LS_CREATE_CLASS_CATEGORY_BEGIN(cl, name) \

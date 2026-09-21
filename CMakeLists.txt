@@ -22,7 +22,8 @@ cmake_minimum_required(VERSION 2.8.7)
 
 project(appinstalld C CXX)
 
-set(CMAKE_BUILD_TYPE Debug)
+# Let the build system (e.g. OE toolchain flags) decide the optimization
+# level; forcing Debug shipped -O0 binaries and broke _FORTIFY_SOURCE.
 
 include(webOS/webOS)
 webos_modules_init(1 5 0)
@@ -88,6 +89,12 @@ SET (EXT_LIBS
 )
 
 target_link_libraries(${CMAKE_PROJECT_NAME} ${EXT_LIBS})
+
+option(BUILD_TESTS "Build the unit test binary" OFF)
+if(BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests/unit)
+endif()
 
 set(webos_program_NAME ${CMAKE_PROJECT_NAME})
 set(permissions PERMISSIONS OWNER_READ OWNER_EXECUTE)

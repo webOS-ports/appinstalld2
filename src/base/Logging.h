@@ -48,7 +48,7 @@
         PmLogDebug(getPmLogContext(), ##__VA_ARGS__)
 
 /* Logging for history context ********/
-#define LOG_HISTORY_CRITICAL(...) \
+#define LOG_HISTORY_CRITICAL(msgid, kvcount, ...) \
         PmLogCritical(getPmLogHistoryContext(), msgid, kvcount, ##__VA_ARGS__)
 
 #define LOG_HISTORY_ERROR(msgid, kvcount, ...) \
@@ -83,6 +83,7 @@
 
 /** ServiceInstallerUtility.cpp */
 #define MSGID_WRONG_SERVICEID           "WRONG_SERVICEID"       /* Service id should starts with app id */
+#define MSGID_REQUIRED_PERMISSIONS_FAIL "REQPERM_FAIL"          /* Could not derive requiredPermissions for a legacy app */
 
 /** InstallHistory.cpp */
 #define MSGID_APPINSTALL_FAIL           "APPINSTALL_FAIL"       /* ApplicationInstallerUtility Execution failed - For Install */

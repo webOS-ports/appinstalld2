@@ -16,7 +16,11 @@
 
 #include <boost/algorithm/string/predicate.hpp>
 #include <iostream>
+#include <unistd.h>
 
+#include <glib.h>
+
+#include "webospaths.h"
 #include "AppInfo.h"
 #include "base/CallChain.h"
 #include "base/JUtil.h"
@@ -32,37 +36,100 @@
 
 using namespace std::placeholders;
 
-static void roleGenerate(std::string templatePath,
+//! Path of the helper that derives "requiredPermissions" for legacy apps.
+static const char * const kRequiredPermissionsHelper =
+    WEBOS_INSTALL_BINDIR "/luneos-app-permissions";
+
+/**
+ * Legacy ipks predate "requiredPermissions" in appinfo.json, so the permission
+ * file generated below would grant them nothing and every luna:// call they
+ * make would be denied. Give the helper a chance to work out which access
+ * control groups the application actually uses and write them into its
+ * appinfo.json, before we read it.
+ *
+ * This is best effort: whatever happens, the installation carries on.
+ */
+static void fillMissingRequiredPermissions(const std::string &applicationPath)
+{
+    if (0 != access(kRequiredPermissionsHelper, X_OK)) {
+        LOG_DEBUG("[ServiceInstallerUtility] %s is not installed, skipping",
+                  kRequiredPermissionsHelper);
+        return;
+    }
+
+    gchar *argv[] = {
+        const_cast<gchar *>(kRequiredPermissionsHelper),
+        const_cast<gchar *>(applicationPath.c_str()),
+        nullptr
+    };
+
+    gint exitStatus = 0;
+    GError *error = nullptr;
+
+    if (!g_spawn_sync(nullptr, argv, nullptr,
+                      (GSpawnFlags)(G_SPAWN_STDOUT_TO_DEV_NULL |
+                                    G_SPAWN_STDERR_TO_DEV_NULL),
+                      nullptr, nullptr, nullptr, nullptr,
+                      &exitStatus, &error)) {
+        LOG_WARNING(MSGID_REQUIRED_PERMISSIONS_FAIL, 1,
+                    PMLOGKS("APP_PATH", applicationPath.c_str()),
+                    "Failed to run %s: %s", kRequiredPermissionsHelper,
+                    error ? error->message : "unknown error");
+        g_clear_error(&error);
+        return;
+    }
+
+    if (exitStatus != 0) {
+        LOG_WARNING(MSGID_REQUIRED_PERMISSIONS_FAIL, 1,
+                    PMLOGKS("APP_PATH", applicationPath.c_str()),
+                    "%s exited with %d", kRequiredPermissionsHelper, exitStatus);
+    }
+}
+
+//! Replace every occurrence of tag, resuming the search after each inserted
+//! value so a value containing the tag itself cannot loop forever.
+static void replaceTag(std::string &line, const std::string &tag, const std::string &value)
+{
+    size_t n = 0;
+    while ((n = line.find(tag, n)) != std::string::npos) {
+        line.replace(n, tag.length(), value);
+        n += value.length();
+    }
+}
+
+static bool roleGenerate(std::string templatePath,
                          std::string destinationPath,
                          std::string id,
                          std::string executablePath)
 {
     std::string line;
-    size_t n;
     std::string trustLevel="oem";
     static const std::string ID_TAG = "XXXIDXXX";
     static const std::string PATH_TAG = "XXXEXEPATHXXX";
     static const std::string trustLevel_TAG = "XXXPERMLEVELXXX";
 
     std::ifstream myfile(templatePath.c_str());
-    std::ofstream newfile(destinationPath.c_str());
-
-    if (!myfile.is_open() || !newfile.is_open()) {
-        return;
+    if (!myfile.is_open()) {
+        LOG_WARNING(MSGID_WRONG_SERVICEID, 1,
+                    PMLOGKS("TEMPLATE", templatePath.c_str()),
+                    "Cannot open role template");
+        return false;
     }
 
-    while (!myfile.eof()) {
-        std::getline(myfile, line);
-        while ((n = line.find(ID_TAG)) != std::string::npos)
-            line.replace(n, ID_TAG.length(), id);
-        while ((n = line.find(PATH_TAG)) != std::string::npos)
-            line.replace(n, PATH_TAG.length(), executablePath);
-        while ((n = line.find(trustLevel_TAG)) != std::string::npos)
-            line.replace(n, trustLevel_TAG.length(), trustLevel);
+    std::ofstream newfile(destinationPath.c_str());
+    if (!newfile.is_open()) {
+        return false;
+    }
+
+    while (std::getline(myfile, line)) {
+        replaceTag(line, ID_TAG, id);
+        replaceTag(line, PATH_TAG, executablePath);
+        replaceTag(line, trustLevel_TAG, trustLevel);
         newfile << line << std::endl;
     }
     newfile.close();
     myfile.close();
+    return true;
 }
 
 bool ServiceInstallerUtility::install(std::string appId,
@@ -74,6 +141,7 @@ bool ServiceInstallerUtility::install(std::string appId,
     std::string applicationPath = installBasePath + Settings::instance().getApplicationInstallPath() + "/" + appId;
     std::string packagePath = installBasePath + Settings::instance().getPackageinstallPath() + "/" + appId;
     LOG_DEBUG("[ServiceInstallerUtility::install]  packagePath : %s", packagePath.c_str());
+    fillMissingRequiredPermissions(applicationPath);
     AppInfo appInfo(std::move(applicationPath));
     if (!appInfo.isLoaded()) {
         Utils::async([onComplete = std::move(onComplete)]() {onComplete(false, "Cannot find appinfo.json");});
@@ -95,6 +163,17 @@ bool ServiceInstallerUtility::install(std::string appId,
     // generate service files
     for (auto iter = serviceLists.begin(); iter != serviceLists.end(); ++iter) {
 
+        // service names come from the package's own packageinfo.json:
+        // never let them escape the services directory
+        if (!Utils::isValidAppId(*iter)) {
+            LOG_WARNING(MSGID_WRONG_SERVICEID, 2,
+                        PMLOGKS("SERVICE_ID", (*iter).c_str()),
+                        PMLOGKS("APP_ID", appId.c_str()),
+                        "Invalid service name in package info");
+            Utils::async([onComplete = std::move(onComplete)]() {onComplete(false, "Invalid service name in package info");});
+            return false;
+        }
+
         std::string servicePath = installBasePath + Settings::instance().getServiceinstallPath() + "/" + (*iter);
         LOG_DEBUG("[ServiceInstallerUtility::install]  servicePath: %s ",servicePath.c_str());
         ServiceInfo serviceInfo(std::move(servicePath));
@@ -105,7 +184,8 @@ bool ServiceInstallerUtility::install(std::string appId,
                 serviceInfo.applyJailer(ServiceInfo::JAILER_DEV);
         }
 
-        if (!boost::starts_with(serviceInfo.getId(), appId + std::string("."))) {
+        if (!boost::starts_with(serviceInfo.getId(), appId + std::string(".")) ||
+            !Utils::isValidAppId(serviceInfo.getId())) {
             LOG_WARNING(MSGID_WRONG_SERVICEID, 2,
                         PMLOGKS("SERVICE_ID", serviceInfo.getId().c_str()),
                         PMLOGKS("APP_ID", appId.c_str()),
@@ -283,9 +363,7 @@ bool ServiceInstallerUtility::generateRoleFile(std::string path, bool isPublic, 
 
     // generate new one
     LOG_DEBUG("[ServiceInstallerUtility] generateRoleFile : filename - %s", filename.c_str());
-    roleGenerate(std::move(templatePath), std::move(filename), servicesInfo.getId(), servicesInfo.getExec(true));
-
-    return true;
+    return roleGenerate(std::move(templatePath), std::move(filename), servicesInfo.getId(), servicesInfo.getExec(true));
 }
 
 bool ServiceInstallerUtility::generateUnifiedAppRoleFile(const std::string &path,
@@ -307,9 +385,7 @@ bool ServiceInstallerUtility::generateUnifiedAppRoleFile(const std::string &path
 
     // generate new one
     LOG_DEBUG("[ServiceInstallerUtility] generateUnifiedAppRoleFile : filename - %s", fullName.c_str());
-    roleGenerate(templatePath, std::move(fullName), id, exec);
-
-    return true;
+    return roleGenerate(templatePath, std::move(fullName), id, exec);
 }
 
 bool ServiceInstallerUtility::generateRoleFileForWebApp(const std::string &path,
@@ -370,15 +446,15 @@ bool ServiceInstallerUtility::generateUnifiedAppPermissionsFile(const std::strin
 
     JValue groups = Array();
 
-    JValue requires = appInfo.getRequiredPermissions();
-    static const JSchemaFragment requires_schema { R"(
+    JValue requiredPermissions = appInfo.getRequiredPermissions();
+    static const JSchemaFragment requiredPermissionsSchema { R"(
         {
             "type": "array",
             "items": {"type": "string"}
         }
     )" };
-    if (JValidator { }.isValid(requires, requires_schema, nullptr)) {
-        groups = std::move(requires);
+    if (JValidator { }.isValid(requiredPermissions, requiredPermissionsSchema, nullptr)) {
+        groups = std::move(requiredPermissions);
     } else {
         LOG_WARNING(MSGID_WRONG_SERVICEID, 1,
                     PMLOGKS("APP_ID", id.c_str()),
@@ -587,7 +663,7 @@ bool ServiceInstallerUtility::generateGroupFileForServiceNewSchema(const std::st
             std::string groupName =  servicesInfo.getId() + "." + groupListItem ["name"].asString();
             groupTrustLevelArray <<  groupListItem ["acgTrustLevel"];
             LOG_DEBUG("[ServiceInstallerUtility::generateGroupFileForServiceNewSchema]  groupListItem : %s", groupListItem.stringify().c_str());
-            LOG_DEBUG("[ServiceInstallerUtility::generateGroupFileForServiceNewSchema]  groupName : %s", groupName);
+            LOG_DEBUG("[ServiceInstallerUtility::generateGroupFileForServiceNewSchema]  groupName : %s", groupName.c_str());
             group.put(groupName, groupTrustLevelArray);
         }
     }
@@ -760,6 +836,14 @@ bool ServiceInstallerUtility::generateManifestFile(const PathInfo &pathInfo,
     //TODO : There is no case only service in package.
     //set id & version from appinfo.json or packageinfo.json
     std::string id = serviceLists.empty() ? appInfo.getId() : packageInfo.getId();
+    // both ids come from files inside the package; the manifest file below is
+    // named after this value, so it must not contain path components
+    if (!Utils::isValidAppId(id)) {
+        LOG_WARNING(MSGID_WRONG_SERVICEID, 1,
+                    PMLOGKS(APP_ID, id.c_str()),
+                    "Invalid id in package metadata");
+        return false;
+    }
     manifestObj.put("id", id);
     manifestObj.put("version", serviceLists.empty() ? appInfo.getVersion() : packageInfo.getVersion());
     //Don't put empty configuration value

@@ -24,20 +24,27 @@
 
 const string Logger::EMPTY = "";
 
+//! luna-service2 accessors return NULL for hub-generated messages;
+//! std::string/printf must never see a NULL
+static const char* safeStr(const char* str)
+{
+    return str ? str : "(null)";
+}
+
 void Logger::logAPIRequest(const string& className, const string& functionName, Message& request, JValue& requestPayload)
 {
     if (request.getSenderServiceName())
-        getInstance().write(LogLevel_INFO, className, functionName, "APIRequest", format("API(%s) Sender(%s)", request.getKind(), request.getSenderServiceName()), requestPayload.stringify("    "));
+        getInstance().write(LogLevel_INFO, className, functionName, "APIRequest", format("API(%s) Sender(%s)", safeStr(request.getKind()), request.getSenderServiceName()), requestPayload.stringify("    "));
     else
-        getInstance().write(LogLevel_INFO, className, functionName, "APIRequest", format("API(%s) Sender(%s)", request.getKind(), request.getApplicationID()), requestPayload.stringify("    "));
+        getInstance().write(LogLevel_INFO, className, functionName, "APIRequest", format("API(%s) Sender(%s)", safeStr(request.getKind()), safeStr(request.getApplicationID())), requestPayload.stringify("    "));
 }
 
 void Logger::logAPIResponse(const string& className, const string& functionName, Message& request, JValue& responsePayload)
 {
     if (request.getSenderServiceName())
-        getInstance().write(LogLevel_INFO, className, functionName, "APIResponse", format("API(%s) Sender(%s)", request.getKind(), request.getSenderServiceName()), responsePayload.stringify("    "));
+        getInstance().write(LogLevel_INFO, className, functionName, "APIResponse", format("API(%s) Sender(%s)", safeStr(request.getKind()), request.getSenderServiceName()), responsePayload.stringify("    "));
     else
-        getInstance().write(LogLevel_INFO, className, functionName, "APIResponse", format("API(%s) Sender(%s)", request.getKind(), request.getApplicationID()), responsePayload.stringify("    "));
+        getInstance().write(LogLevel_INFO, className, functionName, "APIResponse", format("API(%s) Sender(%s)", safeStr(request.getKind()), safeStr(request.getApplicationID())), responsePayload.stringify("    "));
 }
 
 void Logger::logCallRequest(const string& className, const string& functionName, const string& method, JValue& requestPayload)
@@ -47,7 +54,7 @@ void Logger::logCallRequest(const string& className, const string& functionName,
 
 void Logger::logCallResponse(const string& className, const string& functionName, Message& response, JValue& responsePayload)
 {
-    getInstance().write(LogLevel_INFO, className, functionName, "CallResponse", response.getSenderServiceName(), responsePayload.stringify("    "));
+    getInstance().write(LogLevel_INFO, className, functionName, "CallResponse", safeStr(response.getSenderServiceName()), responsePayload.stringify("    "));
 }
 
 void Logger::logSubscriptionRequest(const string& className, const string& functionName, const string& method, JValue& requestPayload)
@@ -57,7 +64,7 @@ void Logger::logSubscriptionRequest(const string& className, const string& funct
 
 void Logger::logSubscriptionResponse(const string& className, const string& functionName, Message& response, JValue& subscriptionPayload)
 {
-    getInstance().write(LogLevel_INFO, className, functionName, "SubscriptionResponse", response.getSenderServiceName(), subscriptionPayload.stringify("    "));
+    getInstance().write(LogLevel_INFO, className, functionName, "SubscriptionResponse", safeStr(response.getSenderServiceName()), subscriptionPayload.stringify("    "));
 }
 
 void Logger::logSubscriptionPost(const string& className, const string& functionName, const LS::SubscriptionPoint& point, JValue& subscriptionPayload)
@@ -196,7 +203,9 @@ void Logger::writePmlog(const enum LogLevel& level, const string& className, con
 
     switch(level) {
     case LogLevel_DEBUG:
-        PmLogDebug(context, detail.c_str());
+        // detail may contain caller-controlled '%': never use it as format
+        PmLogDebug(context, "[%s][%s] %s %s", className.c_str(),
+                   functionName.c_str(), what.c_str(), detail.c_str());
         break;
 
     case LogLevel_INFO:

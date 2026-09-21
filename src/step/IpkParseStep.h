@@ -52,7 +52,6 @@ private:
     std::string m_ipkFile;
 
     bool m_verify;
-    std::string m_appId;
 
 };
 

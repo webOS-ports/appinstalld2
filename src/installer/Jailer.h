@@ -24,6 +24,11 @@
 //! Jailer class helps remove jailer directories
 class Jailer {
 public:
+    Jailer() = default;
+    ~Jailer();
+    Jailer(const Jailer&) = delete;
+    Jailer& operator=(const Jailer&) = delete;
+
     //! Remove jailer directoies with appId
     bool remove(std::string appId, std::function<void (bool)> onRemoved);
 
@@ -33,6 +38,8 @@ protected:
 
 private:
     std::function<void (bool)> m_funcComplete;
+    guint m_watchId = 0;
+    GPid m_childPid = -1;
 };
 
 #endif

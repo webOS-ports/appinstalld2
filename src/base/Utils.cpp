@@ -19,9 +19,11 @@
 #include <ftw.h>
 #include <glib.h>
 #include <memory.h>
+#include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "Logging.h"
 #include "Utils.h"
 
 std::string Utils::read_file(const std::string &path)
@@ -41,8 +43,14 @@ bool Utils::make_dir(const std::string &path, bool withParent)
 {
     if (!withParent) {
         int result = mkdir(path.c_str(), 0755);
-        if (result == 0 || errno == EEXIST)
+        if (result == 0)
             return true;
+        if (errno == EEXIST) {
+            // Only accept a pre-existing plain directory; a file or symlink
+            // sitting at the path must not count as success.
+            struct stat st;
+            return lstat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+        }
     } else {
         int result = g_mkdir_with_parents(path.c_str(), 0755);
         if (result == 0)
@@ -99,6 +107,20 @@ bool Utils::remove_file(const std::string &path)
     return true;
 }
 
+bool Utils::copy_file(const std::string &srcPath, const std::string &destPath)
+{
+    std::ifstream src(srcPath.c_str(), std::ios::binary);
+    if (!src.good())
+        return false;
+
+    std::ofstream dest(destPath.c_str(), std::ios::binary | std::ios::trunc);
+    if (!dest.good())
+        return false;
+
+    dest << src.rdbuf();
+    return dest.good();
+}
+
 long long Utils::file_size(const std::string &path)
 {
     struct stat buf;
@@ -127,7 +149,16 @@ long long Utils::dir_size(const std::string &path)
     struct stat buf;
     long long total_size = 0;
     for (de = readdir(d); de != NULL; de = readdir(d)) {
-        if (-1 != stat(de->d_name, &buf))
+        if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0)
+            continue;
+
+        std::string entryPath = path + "/" + de->d_name;
+        if (-1 == lstat(entryPath.c_str(), &buf))
+            continue;
+
+        if (S_ISDIR(buf.st_mode))
+            total_size += dir_size(entryPath);
+        else
             total_size += buf.st_size;
     }
     closedir(d);
@@ -140,12 +171,45 @@ bool Utils::is_File_exist(const std::string &path)
         return false;
     return true;
 }
+
+bool Utils::isValidAppId(const std::string &appId)
+{
+    // webOS application ids are reverse-dns style: lowercase letters, digits,
+    // '.', '-', '+' and '_', never starting with a separator and never
+    // containing '/' or ".." (they end up in filesystem paths).
+    if (appId.empty() || appId.size() > 256)
+        return false;
+
+    char first = appId.front();
+    if (!g_ascii_isalnum(first))
+        return false;
+
+    for (char c : appId) {
+        if (!(g_ascii_isalnum(c) || c == '.' || c == '-' || c == '_' || c == '+'))
+            return false;
+    }
+
+    if (appId.find("..") != std::string::npos)
+        return false;
+
+    return true;
+}
 gboolean Utils::cbAsync(gpointer data)
 {
     IAsyncCall *p = reinterpret_cast<IAsyncCall*>(data);
     if (!p) return false;
 
-    p->Call();
+    // an exception must not unwind through the glib C dispatch code,
+    // and p must be freed either way
+    try {
+        p->Call();
+    } catch (const std::exception &e) {
+        LOG_WARNING(MSGID_LSCALL_ERR, 1,
+                    PMLOGKS(LOGKEY_ERRTEXT, e.what()),
+                    "Unhandled exception in deferred call");
+    } catch (...) {
+        LOG_WARNING(MSGID_LSCALL_ERR, 0, "Unhandled exception in deferred call");
+    }
 
     delete p;
 
