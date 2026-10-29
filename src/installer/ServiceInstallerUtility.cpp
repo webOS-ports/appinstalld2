@@ -33,6 +33,7 @@
 #include "ServiceInstallerUtility.h"
 #include "settings/Settings.h"
 #include "Manifest.h"
+#include "PermissionFilter.h"
 
 using namespace std::placeholders;
 
@@ -164,8 +165,11 @@ bool ServiceInstallerUtility::install(std::string appId,
     for (auto iter = serviceLists.begin(); iter != serviceLists.end(); ++iter) {
 
         // service names come from the package's own packageinfo.json:
-        // never let them escape the services directory
-        if (!Utils::isValidAppId(*iter)) {
+        // never let them escape the services directory, and never let them
+        // name another package's service (the permission file grants
+        // "<name>.group" for each of them)
+        if (!Utils::isValidAppId(*iter) ||
+            !boost::starts_with(*iter, appId + std::string("."))) {
             LOG_WARNING(MSGID_WRONG_SERVICEID, 2,
                         PMLOGKS("SERVICE_ID", (*iter).c_str()),
                         PMLOGKS("APP_ID", appId.c_str()),
@@ -446,15 +450,28 @@ bool ServiceInstallerUtility::generateUnifiedAppPermissionsFile(const std::strin
 
     JValue groups = Array();
 
-    JValue requiredPermissions = appInfo.getRequiredPermissions();
-    static const JSchemaFragment requiredPermissionsSchema { R"(
-        {
-            "type": "array",
-            "items": {"type": "string"}
+    std::vector<std::string> requested;
+    if (PermissionFilter::requestedGroups(appInfo.getRequiredPermissions(), requested)) {
+        // The application wrote requiredPermissions itself: keep only what a
+        // third-party application may hold. "verified" only says where the
+        // package was installed (internal or developer), not that anybody
+        // vouched for it, so it changes nothing here.
+        std::set<std::string> allowlist;
+        if (!PermissionFilter::loadAllowlist(Settings::instance().getThirdPartyGrantablePath(), allowlist)) {
+            LOG_ERROR(MSGID_ALLOWLIST_FAIL, 2,
+                      PMLOGKS("APP_ID", id.c_str()),
+                      PMLOGKS("PATH", Settings::instance().getThirdPartyGrantablePath().c_str()),
+                      "Allowlist missing or malformed, granting no requested group");
         }
-    )" };
-    if (JValidator { }.isValid(requiredPermissions, requiredPermissionsSchema, nullptr)) {
-        groups = std::move(requiredPermissions);
+
+        std::vector<std::string> dropped;
+        for (const auto &group : PermissionFilter::grantedGroups(requested, allowlist, &dropped))
+            groups << group;
+        for (const auto &group : dropped)
+            LOG_WARNING(MSGID_PERMISSION_DROPPED, 2,
+                        PMLOGKS("APP_ID", id.c_str()),
+                        PMLOGKS("GROUP", group.c_str()),
+                        "requiredPermissions group is not grantable to an installed app, dropped");
     } else {
         LOG_WARNING(MSGID_WRONG_SERVICEID, 1,
                     PMLOGKS("APP_ID", id.c_str()),

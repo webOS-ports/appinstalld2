@@ -8,10 +8,12 @@ add_executable(appinstalld-tests
     test_apppackage.cpp
     test_installhistory.cpp
     test_system.cpp
+    test_permissionfilter.cpp
     ${CMAKE_SOURCE_DIR}/src/base/Logging.cpp
     ${CMAKE_SOURCE_DIR}/src/base/Utils.cpp
     ${CMAKE_SOURCE_DIR}/src/base/System.cpp
     ${CMAKE_SOURCE_DIR}/src/installer/AppPackage.cpp
+    ${CMAKE_SOURCE_DIR}/src/installer/PermissionFilter.cpp
 )
 
 target_include_directories(appinstalld-tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
