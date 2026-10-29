@@ -35,6 +35,11 @@
  */
 namespace PermissionFilter {
 
+//! Trust level written into every role file appinstalld generates.
+//! appinstalld does not verify package signatures, so no package it installs
+//! is given "oem", however it was installed.
+extern const char * const kInstalledAppTrustLevel;
+
 //! True for groups no installed application may hold: "all", "private",
 //! "*.management", "*.devmode", "*.devutility", "*.debug", "*.internal",
 //! "*.profiling", "auth.*", "devmode*", "applicationinstall.*", "arescli.*".

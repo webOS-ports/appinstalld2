@@ -14,6 +14,7 @@ add_executable(appinstalld-tests
     ${CMAKE_SOURCE_DIR}/src/base/System.cpp
     ${CMAKE_SOURCE_DIR}/src/installer/AppPackage.cpp
     ${CMAKE_SOURCE_DIR}/src/installer/PermissionFilter.cpp
+    ${CMAKE_SOURCE_DIR}/src/installer/RoleGenerator.cpp
 )
 
 target_include_directories(appinstalld-tests PRIVATE ${CMAKE_SOURCE_DIR}/src)

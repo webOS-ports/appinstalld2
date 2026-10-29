@@ -1,11 +1,14 @@
-// Tests for src/installer/PermissionFilter.cpp: what an application installed
-// by appinstalld may hold.
+// Tests for src/installer/PermissionFilter.cpp and src/installer/RoleGenerator.cpp:
+// what an application installed by appinstalld may hold, and at which trust
+// level its role is written.
 
 #include <cstdlib>
 #include <fstream>
+#include <sstream>
 #include <unistd.h>
 
 #include "installer/PermissionFilter.h"
+#include "installer/RoleGenerator.h"
 #include "testfw.h"
 
 namespace {
@@ -21,6 +24,14 @@ void writeFile(const std::string &path, const std::string &content)
 {
     std::ofstream f(path.c_str());
     f << content;
+}
+
+std::string readFile(const std::string &path)
+{
+    std::ifstream f(path.c_str());
+    std::stringstream ss;
+    ss << f.rdbuf();
+    return ss.str();
 }
 
 bool contains(const std::vector<std::string> &v, const std::string &s)
@@ -155,6 +166,42 @@ TEST(loadAllowlist_fails_closed)
     CHECK(out.empty());
 
     unlink(path.c_str());
+    rmdir(dir.c_str());
+}
+
+TEST(roleGenerator_writes_dev_trust_level)
+{
+    CHECK(std::string(PermissionFilter::kInstalledAppTrustLevel) == "dev");
+
+    std::string dir = makeTempDir();
+    CHECK(!dir.empty());
+    std::string tmpl = dir + "/WebApp.json";
+    std::string out = dir + "/role.json";
+    writeFile(tmpl,
+              "{\n"
+              "\t\"appId\": \"XXXIDXXX\",\n"
+              "\t\"exeName\": \"XXXEXEPATHXXX\",\n"
+              "\t\"trustLevel\": \"XXXPERMLEVELXXX\"\n"
+              "}\n");
+
+    CHECK(RoleGenerator::generate(tmpl, out, "com.example.app", "/media/cryptofs/apps/x/bin"));
+    std::string role = readFile(out);
+    CHECK(role.find("\"trustLevel\": \"dev\"") != std::string::npos);
+    CHECK(role.find("oem") == std::string::npos);
+    CHECK(role.find("\"appId\": \"com.example.app\"") != std::string::npos);
+    CHECK(role.find("XXX") == std::string::npos);
+
+    unlink(tmpl.c_str());
+    unlink(out.c_str());
+    rmdir(dir.c_str());
+}
+
+TEST(roleGenerator_missing_template_fails)
+{
+    std::string dir = makeTempDir();
+    CHECK(!dir.empty());
+    CHECK(!RoleGenerator::generate(dir + "/none.json", dir + "/role.json", "a", "b"));
+    CHECK(access((dir + "/role.json").c_str(), F_OK) != 0);
     rmdir(dir.c_str());
 }
 

@@ -18,6 +18,8 @@
 
 namespace PermissionFilter {
 
+const char * const kInstalledAppTrustLevel = "dev";
+
 namespace {
 
 bool startsWith(const std::string &s, const char *prefix)
