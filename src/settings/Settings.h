@@ -148,6 +148,7 @@ public:
     const std::string& getRoleTemplatePathJSService() const;
     const std::string& getRoleTemplatePathNativeApp() const;
     const std::string& getRoleTemplatePathNativeService() const;
+    const std::string& getThirdPartyGrantablePath() const;
     const std::string& getConfPath() const;
     const std::string& getSchemaPath() const;
     bool isDevMode();
@@ -183,6 +184,7 @@ private:
     std::string m_roleTemplatePathJSService;   //default : @WEBOS_INSTALL_DATADIR@/rolegen/templates/JSService.json
     std::string m_roleTemplatePathNativeApp;   //default : @WEBOS_INSTALL_DATADIR@/rolegen/templates/NativeApp.json
     std::string m_roleTemplatePathNativeService;   //default : @WEBOS_INSTALL_DATADIR@/rolegen/templates/NativeService.json
+    std::string m_thirdPartyGrantablePath;  //default : @WEBOS_INSTALL_DATADIR@/luna-service2/third-party-grantable.json
     std::string m_confPath;                 //default : @WEBOS_INSTALL_WEBOS_SYSCONFDIR@/appinstalld-conf.json
     std::string m_schemaPath;               //default : @WEBOS_INSTALL_WEBOS_SYSCONFDIR@/schemas/appinstalld/
     // TODO : This is temp code for opkg works properly

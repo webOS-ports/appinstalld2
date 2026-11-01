@@ -84,6 +84,8 @@
 /** ServiceInstallerUtility.cpp */
 #define MSGID_WRONG_SERVICEID           "WRONG_SERVICEID"       /* Service id should starts with app id */
 #define MSGID_REQUIRED_PERMISSIONS_FAIL "REQPERM_FAIL"          /* Could not derive requiredPermissions for a legacy app */
+#define MSGID_PERMISSION_DROPPED        "PERM_DROPPED"          /* requiredPermissions group not grantable to an installed app */
+#define MSGID_ALLOWLIST_FAIL            "ALLOWLIST_FAIL"        /* third-party-grantable.json missing or malformed */
 
 /** InstallHistory.cpp */
 #define MSGID_APPINSTALL_FAIL           "APPINSTALL_FAIL"       /* ApplicationInstallerUtility Execution failed - For Install */
