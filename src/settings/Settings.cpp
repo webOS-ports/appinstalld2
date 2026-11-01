@@ -46,6 +46,7 @@ Settings::Settings()
       m_roleTemplatePathJSService(WEBOS_INSTALL_DATADIR "/rolegen/templates/JSService.json"),
       m_roleTemplatePathNativeApp(WEBOS_INSTALL_DATADIR "/rolegen/templates/NativeApp.json"),
       m_roleTemplatePathNativeService(WEBOS_INSTALL_DATADIR "/rolegen/templates/NativeService.json"),
+      m_thirdPartyGrantablePath(WEBOS_INSTALL_DATADIR "/luna-service2/third-party-grantable.json"),
       m_confPath(WEBOS_INSTALL_WEBOS_SYSCONFDIR "/appinstalld-conf.json"),
       m_schemaPath(WEBOS_INSTALL_WEBOS_SYSCONFDIR "/schemas/appinstalld/"),
       m_devModePath("/var/luna/preferences/devmode_enabled"),
@@ -311,6 +312,11 @@ const std::string& Settings::getRoleTemplatePathNativeApp() const
 const std::string& Settings::getRoleTemplatePathNativeService() const
 {
     return m_roleTemplatePathNativeService;
+}
+
+const std::string& Settings::getThirdPartyGrantablePath() const
+{
+    return m_thirdPartyGrantablePath;
 }
 
 const std::string& Settings::getConfPath() const

@@ -33,6 +33,8 @@
 #include "ServiceInstallerUtility.h"
 #include "settings/Settings.h"
 #include "Manifest.h"
+#include "PermissionFilter.h"
+#include "RoleGenerator.h"
 
 using namespace std::placeholders;
 
@@ -86,52 +88,6 @@ static void fillMissingRequiredPermissions(const std::string &applicationPath)
     }
 }
 
-//! Replace every occurrence of tag, resuming the search after each inserted
-//! value so a value containing the tag itself cannot loop forever.
-static void replaceTag(std::string &line, const std::string &tag, const std::string &value)
-{
-    size_t n = 0;
-    while ((n = line.find(tag, n)) != std::string::npos) {
-        line.replace(n, tag.length(), value);
-        n += value.length();
-    }
-}
-
-static bool roleGenerate(std::string templatePath,
-                         std::string destinationPath,
-                         std::string id,
-                         std::string executablePath)
-{
-    std::string line;
-    std::string trustLevel="oem";
-    static const std::string ID_TAG = "XXXIDXXX";
-    static const std::string PATH_TAG = "XXXEXEPATHXXX";
-    static const std::string trustLevel_TAG = "XXXPERMLEVELXXX";
-
-    std::ifstream myfile(templatePath.c_str());
-    if (!myfile.is_open()) {
-        LOG_WARNING(MSGID_WRONG_SERVICEID, 1,
-                    PMLOGKS("TEMPLATE", templatePath.c_str()),
-                    "Cannot open role template");
-        return false;
-    }
-
-    std::ofstream newfile(destinationPath.c_str());
-    if (!newfile.is_open()) {
-        return false;
-    }
-
-    while (std::getline(myfile, line)) {
-        replaceTag(line, ID_TAG, id);
-        replaceTag(line, PATH_TAG, executablePath);
-        replaceTag(line, trustLevel_TAG, trustLevel);
-        newfile << line << std::endl;
-    }
-    newfile.close();
-    myfile.close();
-    return true;
-}
-
 bool ServiceInstallerUtility::install(std::string appId,
                                       std::string installBasePath,
                                       const PathInfo &pathInfo,
@@ -164,8 +120,11 @@ bool ServiceInstallerUtility::install(std::string appId,
     for (auto iter = serviceLists.begin(); iter != serviceLists.end(); ++iter) {
 
         // service names come from the package's own packageinfo.json:
-        // never let them escape the services directory
-        if (!Utils::isValidAppId(*iter)) {
+        // never let them escape the services directory, and never let them
+        // name another package's service (the permission file grants
+        // "<name>.group" for each of them)
+        if (!Utils::isValidAppId(*iter) ||
+            !boost::starts_with(*iter, appId + std::string("."))) {
             LOG_WARNING(MSGID_WRONG_SERVICEID, 2,
                         PMLOGKS("SERVICE_ID", (*iter).c_str()),
                         PMLOGKS("APP_ID", appId.c_str()),
@@ -363,7 +322,7 @@ bool ServiceInstallerUtility::generateRoleFile(std::string path, bool isPublic, 
 
     // generate new one
     LOG_DEBUG("[ServiceInstallerUtility] generateRoleFile : filename - %s", filename.c_str());
-    return roleGenerate(std::move(templatePath), std::move(filename), servicesInfo.getId(), servicesInfo.getExec(true));
+    return RoleGenerator::generate(std::move(templatePath), std::move(filename), servicesInfo.getId(), servicesInfo.getExec(true));
 }
 
 bool ServiceInstallerUtility::generateUnifiedAppRoleFile(const std::string &path,
@@ -385,7 +344,7 @@ bool ServiceInstallerUtility::generateUnifiedAppRoleFile(const std::string &path
 
     // generate new one
     LOG_DEBUG("[ServiceInstallerUtility] generateUnifiedAppRoleFile : filename - %s", fullName.c_str());
-    return roleGenerate(templatePath, std::move(fullName), id, exec);
+    return RoleGenerator::generate(templatePath, std::move(fullName), id, exec);
 }
 
 bool ServiceInstallerUtility::generateRoleFileForWebApp(const std::string &path,
@@ -446,15 +405,28 @@ bool ServiceInstallerUtility::generateUnifiedAppPermissionsFile(const std::strin
 
     JValue groups = Array();
 
-    JValue requiredPermissions = appInfo.getRequiredPermissions();
-    static const JSchemaFragment requiredPermissionsSchema { R"(
-        {
-            "type": "array",
-            "items": {"type": "string"}
+    std::vector<std::string> requested;
+    if (PermissionFilter::requestedGroups(appInfo.getRequiredPermissions(), requested)) {
+        // The application wrote requiredPermissions itself: keep only what a
+        // third-party application may hold. "verified" only says where the
+        // package was installed (internal or developer), not that anybody
+        // vouched for it, so it changes nothing here.
+        std::set<std::string> allowlist;
+        if (!PermissionFilter::loadAllowlist(Settings::instance().getThirdPartyGrantablePath(), allowlist)) {
+            LOG_ERROR(MSGID_ALLOWLIST_FAIL, 2,
+                      PMLOGKS("APP_ID", id.c_str()),
+                      PMLOGKS("PATH", Settings::instance().getThirdPartyGrantablePath().c_str()),
+                      "Allowlist missing or malformed, granting no requested group");
         }
-    )" };
-    if (JValidator { }.isValid(requiredPermissions, requiredPermissionsSchema, nullptr)) {
-        groups = std::move(requiredPermissions);
+
+        std::vector<std::string> dropped;
+        for (const auto &group : PermissionFilter::grantedGroups(requested, allowlist, &dropped))
+            groups << group;
+        for (const auto &group : dropped)
+            LOG_WARNING(MSGID_PERMISSION_DROPPED, 2,
+                        PMLOGKS("APP_ID", id.c_str()),
+                        PMLOGKS("GROUP", group.c_str()),
+                        "requiredPermissions group is not grantable to an installed app, dropped");
     } else {
         LOG_WARNING(MSGID_WRONG_SERVICEID, 1,
                     PMLOGKS("APP_ID", id.c_str()),
@@ -614,7 +586,7 @@ bool ServiceInstallerUtility::generateGroupFileForServiceOldSchema(const std::st
     JValue allowedNames = Array();
     allowedNames << (servicesInfo.getId());
     JValue group = Object() << JValue::KeyValue("allowedNames", allowedNames);
-    std::string groupTrustLevel =  "dev";
+    std::string groupTrustLevel = PermissionFilter::kInstalledAppTrustLevel;
     pbnjson::JValue groupTrustLevelArray = pbnjson::JArray ();
     groupTrustLevelArray << groupTrustLevel;
     auto services = servicesInfo.getServiceList();
@@ -661,7 +633,10 @@ bool ServiceInstallerUtility::generateGroupFileForServiceNewSchema(const std::st
         {
             pbnjson::JValue groupTrustLevelArray = pbnjson::JArray ();
             std::string groupName =  servicesInfo.getId() + "." + groupListItem ["name"].asString();
-            groupTrustLevelArray <<  groupListItem ["acgTrustLevel"];
+            // The package's own "acgTrustLevel" is not used: its callers
+            // include the package's own app, whose role is never above
+            // kInstalledAppTrustLevel, so "oem" would only lock it out.
+            groupTrustLevelArray << PermissionFilter::kInstalledAppTrustLevel;
             LOG_DEBUG("[ServiceInstallerUtility::generateGroupFileForServiceNewSchema]  groupListItem : %s", groupListItem.stringify().c_str());
             LOG_DEBUG("[ServiceInstallerUtility::generateGroupFileForServiceNewSchema]  groupName : %s", groupName.c_str());
             group.put(groupName, groupTrustLevelArray);
